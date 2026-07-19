@@ -234,6 +234,88 @@ install_scoped_guard_support() {
   fi
 }
 
+# --- new function inserted by Copilot: ensure_susfs_support ---
+ensure_susfs_support() {
+  local target="fs/proc/base.c"
+  local tmp_file
+
+  if [ ! -f "$target" ]; then
+    echo "WARNING: $target not found; cannot add SUSFS helpers." >&2
+    return 1
+  fi
+
+  if grep -q 'SUSFS_IS_INODE_OPEN_REDIRECT' "$target" 2>/dev/null; then
+    echo "SUSFS helpers already present in $target"
+    return 0
+  fi
+
+  if [ -f "include/linux/susfs.h" ]; then
+    if ! grep -q '#include <linux/susfs.h>' "$target"; then
+      tmp_file="$(mktemp)"
+      awk '
+        { print }
+        !done && /^#include <linux\/seq_file.h>/ {
+          print "#include <linux/susfs.h>"
+          done = 1
+        }
+        END {
+          if (!done)
+            print "#include <linux/susfs.h>"
+        }
+      ' "$target" > "$tmp_file"
+      mv "$tmp_file" "$target"
+      echo "Inserted #include <linux/susfs.h> into $target"
+    else
+      echo "#include <linux/susfs.h> already present in $target"
+    fi
+    return 0
+  fi
+
+  tmp_file="$(mktemp)"
+  awk '
+    BEGIN { inserted = 0 }
+    {
+      print
+      if (!inserted && $0 !~ /^#/ && $0 !~ /^[[:space:]]*$/) {
+        print ""
+        print "/* SUSFS fallback stubs inserted by apply_cve_2026_43499.sh to avoid implicit decls; replace with real susfs header when available */"
+        print "#ifndef SUSFS_IS_INODE_OPEN_REDIRECT"
+        print "static inline bool SUSFS_IS_INODE_OPEN_REDIRECT(const struct inode *inode)"
+        print "{"
+        print "    /* conservative default: treat as not a redirect */"
+        print "    return false;"
+        print "}"
+        print "#endif"
+        print ""
+        print "#ifndef SUSFS_IS_INODE_SUS_MAP"
+        print "static inline bool SUSFS_IS_INODE_SUS_MAP(const struct inode *inode)"
+        print "{"
+        print "    /* conservative default: treat as not mapped */"
+        print "    return false;"
+        print "}"
+        print "#endif"
+        inserted = 1
+      }
+    }
+    END {
+      if (!inserted) {
+        print ""
+        print "/* SUSFS fallback stubs appended by apply_cve_2026_43499.sh */"
+        print "#ifndef SUSFS_IS_INODE_OPEN_REDIRECT"
+        print "static inline bool SUSFS_IS_INODE_OPEN_REDIRECT(const struct inode *inode) { return false; }"
+        print "#endif"
+        print "#ifndef SUSFS_IS_INODE_SUS_MAP"
+        print "static inline bool SUSFS_IS_INODE_SUS_MAP(const struct inode *inode) { return false; }"
+        print "#endif"
+      }
+    }
+  ' "$target" > "$tmp_file"
+  mv "$tmp_file" "$target"
+  echo "Inserted SUSFS fallback stubs into $target"
+  return 0
+}
+# --- end new function ---
+
 ensure_scoped_guard_support() {
   if grep -qs 'DEFINE_LOCK_GUARD_1(raw_spinlock' include/linux/spinlock.h &&
      grep -qs 'scoped_guard' include/linux/cleanup.h; then
@@ -253,6 +335,8 @@ ensure_scoped_guard_support() {
 
   echo "Patch helper did not match; installing scoped_guard support directly..."
   install_scoped_guard_support
+  # ensure SUSFS helpers exist if patch couldn't be applied
+  ensure_susfs_support || true
 }
 
 ensure_rtmutex_c99() {
@@ -283,7 +367,7 @@ ensure_rtmutex_c99() {
   additions_file="$(mktemp)"
 
   for object in "${objects[@]}"; do
-    escaped_object="${object//./\\.}"
+    escaped_object="${object//./\.}"
     if ! grep -q "^CFLAGS_REMOVE_${escaped_object} .*std=gnu89" "$makefile"; then
       echo "CFLAGS_REMOVE_${object} += -std=gnu89" >> "$additions_file"
     fi
@@ -376,6 +460,11 @@ if [ -n "${fallback_patch:-}" ] && [ -f "$fallback_patch" ]; then
     exit 0
   fi
 fi
+
+# If we get here, both primary and fallback patches failed to apply cleanly.
+# Try to ensure SUSFS helpers are present to avoid implicit declaration errors
+# in fs/proc/base.c as a temporary mitigation.
+ensure_susfs_support || true
 
 echo "ERROR: failed to apply CVE-2026-43499 rtmutex fix." >&2
 exit 1
