@@ -21,14 +21,25 @@ try_apply_patch() {
 
   log_file="$(mktemp "${TMPDIR:-/tmp}/cve-2026-43499.XXXXXX")"
 
+  # dry-run first
   if patch --dry-run -p1 < "$patch_file" >"$log_file" 2>&1; then
-    patch -p1 < "$patch_file"
-    rm -f "$log_file"
-    return 0
+    # real apply; capture output too
+    if patch -p1 < "$patch_file" >"$log_file" 2>&1; then
+      rm -f "$log_file"
+      return 0
+    fi
   fi
 
-  cat "$log_file" >&2
+  echo "Patch apply failed for $patch_file. Dry-run/log output:" >&2
+  sed -n '1,200p' "$log_file" >&2 || true
   rm -f "$log_file"
+
+  # If any .rej files exist, print them too for diagnostics
+  if find . -type f -name '*.rej' | grep -q .; then
+    echo "Found .rej files (first 200 lines each):" >&2
+    find . -type f -name '*.rej' -print -exec sed -n '1,200p' {} \; >&2 || true
+  fi
+
   return 1
 }
 
