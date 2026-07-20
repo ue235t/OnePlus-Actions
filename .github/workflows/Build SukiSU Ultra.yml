@@ -1,5 +1,7 @@
 name: Build SukiSU Ultra
 on:
+  repository_dispatch:
+    types: [build_event]
   workflow_dispatch:
     inputs:
     
