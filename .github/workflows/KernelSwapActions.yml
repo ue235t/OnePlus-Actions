@@ -1,0 +1,131 @@
+name: KernelSwap V3
+on:
+  workflow_dispatch:
+    inputs:
+      description: "Download boot_a.img + new kernel, swap kernel, upload new boot img"
+
+jobs:
+  swap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download boot_a.img (stock)
+        run: |
+          wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
+          ls -lh boot_a.img
+
+      - name: Download new SUSFS kernel (artifact from build run 29919246300)
+        run: |
+          # Get artifact download URL via API
+          ART_JSON=$(gh api repos/ue235t/OnePlus-Actions/actions/runs/29919246300/artifacts --jq '.artifacts[0] | {id:.id, url:.archive_download_url}')
+          echo "Artifact: $ART_JSON"
+          gh run download 29919246300 -R ue235t/OnePlus-Actions --dir ./kernel_artifact/
+          ls -la kernel_artifact/
+
+      - name: Check files
+        run: |
+          echo "=== boot_a.img header ==="
+          xxd boot_a.img | head -8
+          echo ""
+          echo "=== Image info ==="
+          file kernel_artifact/Image 2>/dev/null || ls -la kernel_artifact/
+          ls -lh kernel_artifact/
+
+      - name: Install Python boot tools
+        run: |
+          pip install -q pyelftools 2>/dev/null || true
+          which python3 && python3 --version
+
+      - name: Replace kernel in boot image
+        run: |
+          python3 << 'PYEOF'
+          import struct, os, sys
+
+          BOOT_IMG = "boot_a.img"
+          NEW_KERNEL = "kernel_artifact/Image"
+          OUT_IMG = "new_boot_a.img"
+
+          # Read boot header (first 1664 bytes, page-aligned)
+          with open(BOOT_IMG, "rb") as f:
+              header = bytearray(f.read(1664))
+
+          # Parse android boot header v4 (4096-byte page)
+          page_size = struct.unpack_from("<I", header, 0)[0]
+          kernel_offset = struct.unpack_from("<I", header, 8)[0]
+          kernel_size = struct.unpack_from("<I", header, 16)[0]
+          ramdisk_offset = struct.unpack_from("<I", header, 24)[0]
+          ramdisk_size = struct.unpack_from("<I", header, 32)[0]
+          os_version = struct.unpack_from("<I", header, 40)[0]
+          os_patch_level = struct.unpack_from("<I", header, 44)[0]
+          header_version = struct.unpack_from("<I", header, 60)[0]
+          cmdline_offset = struct.unpack_from("<I", header, 52)[0]
+          cmdline_len = struct.unpack_from("<I", header, 56)[0]
+
+          print(f"page_size={page_size} (0x{page_size:x})")
+          print(f"kernel_offset=0x{kernel_offset:x}, kernel_size={kernel_size} (0x{kernel_size:x})")
+          print(f"ramdisk_offset=0x{ramdisk_offset:x}, ramdisk_size={ramdisk_size}")
+          print(f"header_version={header_version}")
+          print(f"os_version=0x{os_version:x}, os_patch=0x{os_patch_level:x}")
+
+          new_kernel_size = os.path.getsize(NEW_KERNEL)
+          print(f"\nNew kernel size: {new_kernel_size} (0x{new_kernel_size:x})")
+          print(f"Old kernel size: {kernel_size} (0x{kernel_size:x})")
+
+          # GKI boot: kernel is at kernel_offset, followed by:
+          # - kernel (aligned)
+          # - second bootloader (skipped)
+          # - page-aligned start of ramdisk
+          # GKI kernel is stored UNCOMPRESSED (no gzip wrapper in GKI 2.0)
+          # We replace the kernel bytes directly
+
+          # Open input and create output
+          with open(BOOT_IMG, "rb") as f_in:
+              new_kernel_data = open(NEW_KERNEL, "rb").read()
+
+              # New kernel must fit before ramdisk
+              if kernel_offset + new_kernel_size > ramdisk_offset:
+                  print(f"FATAL: New kernel too large! Available: {ramdisk_offset - kernel_offset}, needed: {new_kernel_size}")
+                  sys.exit(1)
+
+              # Copy boot image up to kernel
+              with open(OUT_IMG, "wb") as f_out:
+                  f_in.seek(0)
+                  f_out.write(f_in.read(kernel_offset))
+                  f_out.write(new_kernel_data)
+
+                  # Pad to ramdisk offset
+                  current = kernel_offset + new_kernel_size
+                  if current < ramdisk_offset:
+                      pad_size = ramdisk_offset - current
+                      f_out.write(b'\x00' * pad_size)
+                      print(f"Padded {pad_size} bytes to ramdisk start")
+
+                  # Copy ramdisk (and everything after)
+                  f_in.seek(ramdisk_offset)
+                  while True:
+                      chunk = f_in.read(1024*1024)
+                      if not chunk:
+                          break
+                      f_out.write(chunk)
+
+          # Update kernel_size in header
+          with open(OUT_IMG, "r+b") as f:
+              f.seek(16)
+              f.write(struct.pack("<I", new_kernel_size))
+              print(f"Updated kernel_size to {new_kernel_size}")
+
+          out_size = os.path.getsize(OUT_IMG)
+          print(f"\nDone! Output: {out_size} bytes ({out_size/1024/1024:.1f} MB)")
+          print(f"Input:  {os.path.getsize(BOOT_IMG)} bytes ({os.path.getsize(BOOT_IMG)/1024/1024:.1f} MB)")
+          PYEOF
+
+      - name: Upload new boot image
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: susfs-ready
+          name: "SUSFS Kernel + Stock boot_a (ready to fastboot)"
+          body: "New boot_a.img with SUSFS kernel pre-installed. Flash with: `fastboot flash boot_a new_boot_a.img` then `fastboot set_active a`"
+          files: |
+            new_boot_a.img
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
