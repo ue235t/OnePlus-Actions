@@ -1,0 +1,70 @@
+name: KernelSwap
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_NAME:
+        description: "Kernel artifact name"
+        required: true
+        type: text
+        default: "oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS"
+      RUN_ID:
+        description: "Build workflow run ID to download kernel from"
+        required: true
+        type: text
+        default: "29919246300"
+
+jobs:
+  swap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download boot_a.img
+        run: |
+          wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
+          ls -lh boot_a.img
+
+      - name: Download kernel artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: ${{ inputs.KERNEL_NAME }}
+          repo: ue235t/OnePlus-Actions
+          run_id: ${{ inputs.RUN_ID }}
+          path: kernel_out
+
+      - name: Find kernel Image
+        run: |
+          ls -la kernel_out/
+          KERNEL=$(find kernel_out/ -name "Image" -o -name "Image.lz4" -o -name "Image.zst" -o -name "Image.gz" 2>/dev/null | head -1)
+          echo "KERNEL=$KERNEL"
+          echo "KERNEL=$KERNEL" >> $GITHUB_OUTPUT
+        id: find_kernel
+
+      - name: Install magiskboot
+        run: |
+          wget -q "https://raw.githubusercontent.com/topjohnwu/magisk-files/master/scripts/bootctl.sh"
+          bash bootctl.sh magiskboot || true
+          wget -q "https://github.com/Allex-02/magiskboot/releases/download/v27.1/magiskboot" -O magiskboot
+          chmod +x magiskboot
+          ./magiskboot --version
+
+      - name: Unpack boot_a.img
+        run: |
+          chmod +x magiskboot
+          ./magiskboot unpack boot_a.img 2>&1 | tee unpack.log || true
+          ls -la
+
+      - name: Replace kernel
+        run: |
+          chmod +x magiskboot
+          KERNEL=$(cat $GITHUB_OUTPUT | grep KERNEL | cut -d= -f2)
+          echo "Using kernel: $KERNEL"
+          ls -lh "$KERNEL"
+          ./magiskboot repack boot_a.img new_boot.img 2>&1 | tee repack.log || true
+          ls -lh new_boot.img
+
+      - name: Upload new boot image
+        uses: actions/upload-artifact@v7
+        with:
+          name: new_boot_img_${{ inputs.KERNEL_NAME }}
+          path: new_boot.img
+          retention-days: 5
