@@ -1,0 +1,231 @@
+name: Replace Kernel in boot_a
+
+on:
+  workflow_dispatch:
+    inputs:
+      FEIL:
+        description: Device (used to find artifact)
+        required: true
+        type: choice
+        options:
+          - oneplus_ace5_b
+          - oneplus_ace5
+        default: oneplus_ace5_b
+      ARTIFACT_NAME:
+        description: "Artifact name (e.g. oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS)"
+        required: true
+        type: text
+        default: "oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS"
+
+env:
+  BOOT_IMG_URL: "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
+
+jobs:
+  replace-kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download stock boot_a.img
+        run: |
+          wget -q -O boot_a.img "${{ env.BOOT_IMG_URL }}"
+          echo "boot_a.img size: $(stat -c%s boot_a.img) bytes"
+
+      - name: Download SUSFS kernel artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: ${{ inputs.ARTIFACT_NAME }}
+          repo: ue235t/OnePlus-Actions
+          run_id: ${{ github.run_id }}
+          path: kernel_out
+          workflow_conclusion: success
+
+      - name: Show kernel artifact contents
+        run: |
+          ls -la kernel_out/
+          KERNEL_FILE=$(find kernel_out/ -name "Image" -o -name "Image.lz4" -o -name "Image.zst" -o -name "Image.gz" | head -5)
+          echo "Found kernel files: $KERNEL_FILE"
+          for f in $KERNEL_FILE; do
+            echo "  $f: $(stat -c%s $f) bytes"
+          done
+
+      - name: Install magiskboot
+        run: |
+          cd /tmp
+          wget -q "https://raw.githubusercontent.com/topjohnwu/magisk-files/master/scripts/bootstrap.sh"
+          bash bootstrap.sh magiskboot
+          ls /data/local/tmp/magiskboot || ls /tmp/magiskboot || find / -name magiskboot -type f 2>/dev/null | head -5
+
+      - name: Download magiskboot binary directly
+        run: |
+          MAGISKBOOT_URL="https://github.com/nicekete/magiskboot-for-linux-amd64/releases/download/v2.5.0-1/magiskboot"
+          wget -q -O magiskboot "$MAGISKBOOT_URL" || \
+          MAGISKBOOT_URL="https://github.com/Alex-021/magiskboot/releases/download/v27.1/magiskboot"
+          wget -q -O magiskboot "$MAGISKBOOT_URL"
+          chmod +x magiskboot
+          ./magiskboot --version || echo "MAGISKBOOT_FAILED"
+
+      - name: Unpack stock boot_a.img
+        id: unpack
+        run: |
+          chmod +x magiskboot
+          # Try magiskboot first
+          if ./magiskboot unpack boot_a.img 2>&1 | tee unpack_log.txt; then
+            echo "UNPACKED=true" >> $GITHUB_ENV
+            ls -la
+          else
+            echo "Trying manual unpack..."
+            echo "UNPACKED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Inspect unpacked boot components
+        if: env.UNPACKED == 'true'
+        run: |
+          echo "=== Unpacked files ==="
+          ls -la *.dtb* *.img* 2>/dev/null || ls -la
+          echo "=== Kernel info ==="
+          find . -name "kernel" -o -name "kernel.gz" -o -name "kernel.lz4" -o -name "kernel.zst" 2>/dev/null | head -10
+          cat unpack_log.txt 2>/dev/null | head -30
+
+      - name: Replace kernel in boot image
+        run: |
+          chmod +x magiskboot
+          KERNEL_SRC=$(find kernel_out/ -type f \( -name "Image" -o -name "Image.lz4" -o -name "Image.zst" -o -name "Image.gz" \) | head -1)
+          echo "Using kernel: $KERNEL_SRC ($(stat -c%s $KERNEL_SRC) bytes)"
+          
+          # If UNPACKED, repack with new kernel
+          if [ "$UNPACKED" = "true" ]; then
+            # Find the kernel file in unpacked
+            KERNEL_DEST=""
+            for k in kernel kernel.gz kernel.lz4 kernel.zst Image; do
+              [ -f "$k" ] && KERNEL_DEST="$k" && break
+            done
+            echo "Replacing: $KERNEL_DEST"
+            cp "$KERNEL_SRC" "$KERNEL_DEST"
+            
+            # Repack
+            ./magiskboot repack boot_a.img new_boot.img 2>&1 | tee repack_log.txt
+            if [ -f new_boot.img ]; then
+              echo "REPACKED=true" >> $GITHUB_ENV
+            else
+              echo "REPACKED=false" >> $GITHUB_ENV
+              cat repack_log.txt
+            fi
+          else
+            echo "SKIP_REPACK=true" >> $GITHUB_ENV
+          fi
+
+      - name: Alternative: Python kernel replacement
+        if: env.UNPACKED != 'true' || env.REPACKED != 'true'
+        run: |
+          python3 << 'PYEOF'
+          import struct, os, shutil
+
+          # Read boot img
+          with open('boot_a.img', 'rb') as f:
+            data = bytearray(f.read())
+
+          # Find kernel (Android boot header)
+          MAGIC = b'ANDROID!'
+          idx = data.find(MAGIC)
+          if idx < 0:
+            print('No ANDROID! magic found')
+            exit(1)
+
+          page_size = struct.unpack_from('<I', data, idx+36)[0]
+          if page_size == 0:
+            page_size = 4096
+          kernel_size = struct.unpack_from('<I', data, idx+8)[0]
+          ramdisk_size = struct.unpack_from('<I', data, idx+16)[0]
+          ramdisk_offset = struct.unpack_from('<I', data, idx+20)[0]
+          second_size = struct.unpack_from('<I', data, idx+24)[0]
+          second_offset = struct.unpack_from('<I', data, idx+28)[0]
+          dt_size = struct.unpack_from('<I', data, idx+52)[0]
+          dt_offset = struct.unpack_from('<I', data, idx+56)[0]
+          hdr_version = struct.unpack_from('<I', data, idx+40)[0]
+
+          print(f'page_size={page_size} kernel_size={kernel_size} ramdisk_size={ramdisk_size}')
+          print(f'ramdisk_offset=0x{ramdisk_offset:x} dt_size={dt_size} dt_offset=0x{dt_offset:x}')
+          print(f'hdr_version={hdr_version}')
+
+          # Kernel starts at page_size offset
+          kernel_start = page_size
+          kernel_end = kernel_start + kernel_size
+
+          # Find new kernel
+          import glob
+          for pattern in ['kernel_out/Image*', 'kernel_out/*/Image*', 'kernel_out/**/Image*']:
+            for f in glob.glob(pattern, recursive=True):
+              sz = os.path.getsize(f)
+              if 10000000 < sz < 60000000:
+                print(f'Using new kernel: {f} ({sz} bytes)')
+                
+                # Read new kernel
+                with open(f, 'rb') as nf:
+                  new_kernel = nf.read()
+                
+                # Build new boot.img
+                # Preserve header, then new kernel, then original ramdisk/dt
+                new_data = bytearray(len(data))
+                
+                # Copy header
+                new_data[0:page_size] = data[0:page_size]
+                
+                # Update kernel_size in header (at offset idx+8, 4 bytes LE)
+                struct.pack_into('<I', new_data, idx+8, len(new_kernel))
+                
+                # Copy new kernel
+                new_data[kernel_start:kernel_start+len(new_kernel)] = new_kernel
+                
+                # Copy ramdisk
+                if ramdisk_size > 0:
+                  ramdisk_start = ((kernel_start + len(new_kernel) + page_size - 1) // page_size) * page_size
+                  new_data[ramdisk_start:ramdisk_start+ramdisk_size] = data[ramdisk_offset:ramdisk_offset+ramdisk_size]
+                  # Update ramdisk_offset in header
+                  struct.pack_into('<I', new_data, idx+20, ramdisk_start)
+                
+                # Copy dtb if present
+                if dt_size > 0:
+                  dt_start = ramdisk_start + ramdisk_size
+                  dt_start = (dt_start + page_size - 1) // page_size * page_size
+                  new_data[dt_start:dt_start+dt_size] = data[dt_offset:dt_offset+dt_size]
+                  struct.pack_into('<I', new_data, idx+56, dt_start)
+                
+                # Write new boot.img
+                with open('new_boot.img', 'wb') as out:
+                  out.write(new_data)
+                print(f'Written new_boot.img: {len(new_data)} bytes')
+                exit(0)
+
+          print('No suitable new kernel found!')
+          exit(1)
+          PYEOF
+
+      - name: Show final image
+        run: |
+          if [ -f new_boot.img ]; then
+            echo "=== new_boot.img ==="
+            ls -la new_boot.img
+            python3 -c "
+            import struct
+            with open('new_boot.img','rb') as f:
+              d=f.read(2048)
+            if d[:8]==b'ANDROID!':
+              print('Magic: ANDROID!')
+              print('kernel_size:', struct.unpack_from('<I',d,8)[0])
+              print('ramdisk_size:', struct.unpack_from('<I',d,16)[0])
+              print('page_size:', struct.unpack_from('<I',d,36)[0])
+            "
+          fi
+
+      - name: Upload new boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.FEIL }}_SukiSU_Ultra_SUSFS_complete
+          path: new_boot.img
+          retention-days: 30
+
+      - name: Upload repack log
+        if: always()
+        run: |
+          echo "UNPACKED=$UNPACKED" >> $GITHUB_ENV
+          echo "REPACKED=$REPACKED" >> $GITHUB_ENV
+          echo "SKIP_REPACK=$SKIP_REPACK" >> $GITHUB_ENV
