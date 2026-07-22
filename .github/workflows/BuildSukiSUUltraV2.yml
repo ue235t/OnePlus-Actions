@@ -235,6 +235,7 @@ jobs:
               fi
             fi
             patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+            python3 $GITHUB_WORKSPACE/local/fix_susfs_include.py
             if [ "$fake_patched" = 1 ]; then
               if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android14" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
                 if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
