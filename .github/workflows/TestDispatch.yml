@@ -1,0 +1,12 @@
+name: Test Dispatch
+on:
+  repository_dispatch:
+    types: [test]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Hello from test dispatch!"
+      - run: echo "FEIL=${{ github.event.client_payload.FEIL }}"
