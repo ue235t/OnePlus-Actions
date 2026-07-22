@@ -17,6 +17,9 @@ on:
         type: text
         default: "oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS"
 
+  repository_dispatch:
+    types: [replace-kernel]
+
 env:
   BOOT_IMG_URL: "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
 
