@@ -8,40 +8,28 @@ jobs:
   swap:
     runs-on: ubuntu-latest
     steps:
-      - name: Download boot_a.img (stock)
+      - name: Download stock boot_a.img from release
         run: |
           wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
           ls -lh boot_a.img
 
-      - name: Download SUSFS kernel artifact and extract
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p kernel_artifact
-          # Get signed S3 URL from API, then download the zip
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/ue235t/OnePlus-Actions/actions/artifacts/8529683680/zip" \
-            --jq '.url' | \
-          xargs -I {} gh api \
-            -H "Accept: application/octet-stream" \
-            "{}" \
-            -o kernel_artifact/susfs_artifact.zip
-          ls -lh kernel_artifact/susfs_artifact.zip
-          unzip -q kernel_artifact/susfs_artifact.zip -d kernel_artifact/
-          echo "=== Extracted contents ==="
-          find kernel_artifact/ -type f | head -20
+      - name: Download SUSFS kernel artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 29919246300
+          repo: ue235t/OnePlus-Actions
+          name: oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS
+          path: kernel_artifact
+          github-token: ${{ github.token }}
 
-      - name: Inspect files
+      - name: Inspect downloaded files
         run: |
-          echo "=== boot_a.img header ==="
-          xxd boot_a.img | head -8
+          echo "=== boot_a.img ==="
+          ls -lh boot_a.img
           echo ""
-          echo "=== kernel_artifact root ==="
+          echo "=== kernel_artifact tree ==="
+          find kernel_artifact/ -type f | head -30
           ls -lh kernel_artifact/
-          echo ""
-          echo "=== SUSFS subdir ==="
-          ls -lh kernel_artifact/oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS/ 2>/dev/null || echo "NOT FOUND"
 
       - name: Replace kernel in boot image
         run: |
@@ -49,25 +37,32 @@ jobs:
           import struct, os, sys
 
           BOOT_IMG = "boot_a.img"
-          # Find the Image file - look in subdirectory
-          subdir = "kernel_artifact/oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS"
-          if os.path.isdir(subdir) and os.path.exists(os.path.join(subdir, "Image")):
-              NEW_KERNEL = os.path.join(subdir, "Image")
-          elif os.path.exists("kernel_artifact/Image"):
-              NEW_KERNEL = "kernel_artifact/Image"
-          else:
-              # Find any Image file
+
+          # Find the Image file - check artifact directory
+          possible_paths = [
+              "kernel_artifact/oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS/Image",
+              "kernel_artifact/Image",
+              "kernel_artifact/kernel_artifact/Image",
+          ]
+          NEW_KERNEL = None
+          for p in possible_paths:
+              if os.path.exists(p):
+                  NEW_KERNEL = p
+                  break
+          if not NEW_KERNEL:
+              # Try to find it recursively
               for root, dirs, files in os.walk("kernel_artifact"):
                   if "Image" in files:
                       NEW_KERNEL = os.path.join(root, "Image")
                       break
-              else:
-                  print("ERROR: No Image file found!")
-                  sys.exit(1)
+          if not NEW_KERNEL:
+              print("ERROR: No Image file found!")
+              print("Files found:", list(os.walk("kernel_artifact")))
+              sys.exit(1)
 
           OUT_IMG = "new_boot_a.img"
-          print(f"Using kernel: {NEW_KERNEL}")
-          print(f"Size: {os.path.getsize(NEW_KERNEL)} bytes")
+          print(f"Kernel: {NEW_KERNEL}")
+          print(f"Size: {os.path.getsize(NEW_KERNEL)/1024/1024:.1f} MB")
 
           with open(BOOT_IMG, "rb") as f:
               header = bytearray(f.read(4096))
@@ -78,46 +73,36 @@ jobs:
           ramdisk_offset = struct.unpack_from("<I", header, 24)[0]
           ramdisk_size = struct.unpack_from("<I", header, 32)[0]
           header_version = struct.unpack_from("<I", header, 60)[0]
-          os_version = struct.unpack_from("<I", header, 40)[0]
-          os_patch_level = struct.unpack_from("<I", header, 44)[0]
 
           print(f"page_size={page_size} (0x{page_size:x})")
-          print(f"kernel_offset=0x{kernel_offset:x}, kernel_size={kernel_size} (0x{kernel_size:x})")
-          print(f"ramdisk_offset=0x{ramdisk_offset:x}")
+          print(f"kernel_offset=0x{kernel_offset:x}, kernel_size={kernel_size} ({kernel_size/1024/1024:.1f} MB)")
+          print(f"ramdisk_offset=0x{ramdisk_offset:x}, ramdisk_size={ramdisk_size}")
           print(f"header_version={header_version}")
-          print(f"os_version=0x{os_version:x}, os_patch=0x{os_patch_level:x}")
-
-          new_kernel_size = os.path.getsize(NEW_KERNEL)
-          available = ramdisk_offset - kernel_offset
-          print(f"\nNew kernel: {new_kernel_size} bytes ({new_kernel_size/1024/1024:.1f} MB)")
-          print(f"Available: {available} bytes ({available/1024/1024:.1f} MB)")
-          print(f"Old kernel: {kernel_size} bytes")
-
-          if new_kernel_size > available:
-              print(f"FATAL: New kernel too large!")
-              sys.exit(1)
 
           new_kernel_data = open(NEW_KERNEL, "rb").read()
-          print(f"Read new kernel: {len(new_kernel_data)} bytes")
+          new_kernel_size = len(new_kernel_data)
+          available = ramdisk_offset - kernel_offset
+
+          print(f"\nNew kernel: {new_kernel_size/1024/1024:.1f} MB")
+          print(f"Available: {available/1024/1024:.1f} MB")
+
+          if new_kernel_size > available:
+              print(f"FATAL: Kernel too large!")
+              sys.exit(1)
 
           with open(BOOT_IMG, "rb") as f_in:
               with open(OUT_IMG, "wb") as f_out:
-                  # Copy header (page 0 through kernel start)
                   f_out.write(f_in.read(kernel_offset))
-                  # Write new kernel
                   f_out.write(new_kernel_data)
-                  # Pad to ramdisk start
                   current = kernel_offset + new_kernel_size
                   if current < ramdisk_offset:
                       pad = ramdisk_offset - current
                       f_out.write(b'\x00' * pad)
-                      print(f"Padded {pad} bytes to ramdisk")
-                  # Copy ramdisk + rest
+                      print(f"Padded {pad} bytes")
                   f_in.seek(ramdisk_offset)
                   while True:
                       chunk = f_in.read(1024*1024)
-                      if not chunk:
-                          break
+                      if not chunk: break
                       f_out.write(chunk)
 
           # Update kernel_size in header
@@ -126,15 +111,14 @@ jobs:
               f.write(struct.pack("<I", new_kernel_size))
 
           out_sz = os.path.getsize(OUT_IMG)
-          print(f"\nDone! Output: {out_sz} bytes ({out_sz/1024/1024:.1f} MB)")
-          print(f"  boot_a: {os.path.getsize(BOOT_IMG)} bytes")
+          print(f"\nDone! Output: {out_sz/1024/1024:.1f} MB")
           PYEOF
 
-      - name: Upload new boot image
+      - name: Upload new boot image to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: susfs-ready
-          name: "SUSFS Kernel (ready to fastboot flash)"
+          name: "SUSFS Kernel (pre-patched, ready to flash)"
           body: |
             **new_boot_a.img** = stock boot_a + SUSFS kernel pre-installed.
 
