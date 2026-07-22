@@ -13,27 +13,24 @@ jobs:
           wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
           ls -lh boot_a.img
 
-      - name: Download SUSFS kernel artifact (zip) and extract
+      - name: Download SUSFS kernel artifact and extract
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p kernel_artifact
-          # Download artifact zip using gh API (follows redirect to S3)
-          ghapi_out=$(gh api \
+          # Get signed S3 URL from API, then download the zip
+          gh api \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/ue235t/OnePlus-Actions/actions/artifacts/8529683680/zip" \
-            --jq '.url' 2>/dev/null)
-          echo "Artifact URL: $ghapi_out"
-          # Download the zip
-          wget -q -O kernel_artifact/susfs_artifact.zip \
-            "https://github.com/ue235t/OnePlus-Actions/actions/artifacts/8529683680/zip"
+            --jq '.url' | \
+          xargs -I {} gh api \
+            -H "Accept: application/octet-stream" \
+            "{}" \
+            -o kernel_artifact/susfs_artifact.zip
           ls -lh kernel_artifact/susfs_artifact.zip
           unzip -q kernel_artifact/susfs_artifact.zip -d kernel_artifact/
           echo "=== Extracted contents ==="
           find kernel_artifact/ -type f | head -20
-          echo "=== Directory listing ==="
-          ls -lh kernel_artifact/
-          ls -lh kernel_artifact/oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS/ 2>/dev/null || echo "Subdir not found"
 
       - name: Inspect files
         run: |
