@@ -29,7 +29,7 @@ jobs:
           ls -lh kernel_artifact/
           echo ""
           echo "=== Image magic ==="
-          xxd kernel_artifact/Image | head -4
+          xxd kernel_artifact/oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS/Image | head -4
 
       - name: Replace kernel in boot image
         run: |
@@ -37,7 +37,7 @@ jobs:
           import struct, os, sys
 
           BOOT_IMG = "boot_a.img"
-          NEW_KERNEL = "kernel_artifact/Image"
+          NEW_KERNEL = "kernel_artifact/oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS/Image"
           OUT_IMG = "new_boot_a.img"
 
           with open(BOOT_IMG, "rb") as f:
