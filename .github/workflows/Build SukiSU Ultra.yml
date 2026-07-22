@@ -1,5 +1,7 @@
 name: Build SukiSU Ultra
 on:
+  repository_dispatch:
+    types: [build]
   workflow_dispatch:
     inputs:
     
@@ -160,7 +162,7 @@ on:
          
 jobs:
   build:
-    name: For ${{ github.event.inputs.FEIL }} KPM ${{ github.event.inputs.KPM }} lz4kd ${{ github.event.inputs.lz4kd }} SUSFS ${{ github.event.inputs.SUSFS }}
+    name: For ${{ github.event.client_payload.FEIL }} KPM ${{ github.event.client_payload.KPM }} lz4kd ${{ github.event.client_payload.lz4kd }} SUSFS ${{ github.event.client_payload.SUSFS }}
     runs-on: ubuntu-latest
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
@@ -170,7 +172,7 @@ jobs:
       
     steps:
       - name: "馃殌 Maximize Build Space | 鏈€澶у寲鏋勫缓绌洪棿"
-        if: ${{ github.event.inputs.KERNEL_VERSION == '5.10' || github.event.inputs.KERNEL_VERSION == '5.15' }}
+        if: ${{ github.event.client_payload.KERNEL_VERSION == '5.10' || github.event.client_payload.KERNEL_VERSION == '5.15' }}
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
@@ -186,9 +188,9 @@ jobs:
       - name: "鈿欙笍 Setup Cache Env | 璁剧疆缂撳瓨鐜"
         run: |
           echo "馃敡 姝ｅ湪璁剧疆鏈哄瀷闅旂缂撳瓨鐩綍..."
-          echo "CCACHE_DIR=$HOME/.ccache_${{ github.event.inputs.FEIL }}_SukiSU" >> $GITHUB_ENV
-          mkdir -p "$HOME/.ccache_${{ github.event.inputs.FEIL }}_SukiSU"
-          echo "鉁?缂撳瓨鐩綍宸茶缃? $HOME/.ccache_${{ github.event.inputs.FEIL }}_SukiSU"
+          echo "CCACHE_DIR=$HOME/.ccache_${{ github.event.client_payload.FEIL }}_SukiSU" >> $GITHUB_ENV
+          mkdir -p "$HOME/.ccache_${{ github.event.client_payload.FEIL }}_SukiSU"
+          echo "鉁?缂撳瓨鐩綍宸茶缃? $HOME/.ccache_${{ github.event.client_payload.FEIL }}_SukiSU"
 
       - name: "馃攼 Configure Git | 閰嶇疆Git璐︽埛"
         run: |
@@ -204,23 +206,23 @@ jobs:
           execute_install_scripts: true
 
       - name: "馃捑 Restore ccache (With SUSFS) | 鎭㈠ccache缂撳瓨 (With SUSFS)"
-        if: ${{ github.event.inputs.SUSFS == 'On' }}
+        if: ${{ github.event.client_payload.SUSFS == 'On' }}
         uses: actions/cache@v5
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.event.inputs.FEIL }}-SukiSU-SUSFS
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.event.client_payload.FEIL }}-SukiSU-SUSFS
           restore-keys: |
-            ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-SukiSU-SUSFS
+            ccache-${{ runner.os }}-${{ github.event.client_payload.FEIL }}-SukiSU-SUSFS
             ccache-${{ runner.os }}-SukiSU-SUSFS
 
       - name: "馃捑 Restore ccache (Without SUSFS) | 鎭㈠ccache缂撳瓨 (Without SUSFS)"
-        if: ${{ github.event.inputs.SUSFS == 'Off' }}
+        if: ${{ github.event.client_payload.SUSFS == 'Off' }}
         uses: actions/cache@v5
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.event.inputs.FEIL }}-SukiSU-NoSUSFS
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.event.client_payload.FEIL }}-SukiSU-NoSUSFS
           restore-keys: |
-            ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-SukiSU-NoSUSFS
+            ccache-${{ runner.os }}-${{ github.event.client_payload.FEIL }}-SukiSU-NoSUSFS
             ccache-${{ runner.os }}-SukiSU-NoSUSFS
 
       - name: "鈿欙笍 Initialize ccache | 鍒濆鍖朿cache"
@@ -257,7 +259,7 @@ jobs:
           mkdir kernel_workspace && cd kernel_workspace
 
           echo "馃寪 姝ｅ湪鍒濆鍖栧唴鏍镐粨搴?.."
-          repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
+          repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.client_payload.CPU }} -m ${{ github.event.client_payload.FEIL }}.xml --depth=1
 
           echo "馃攧 鍚屾浠ｇ爜搴?浣跨敤$(nproc --all)绾跨▼)..."
           repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle --force-sync
@@ -276,12 +278,12 @@ jobs:
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/msm-kernel/scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/external/dtc/scripts/setlocalversion
           
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "6.6" ]; then
-            sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/common/scripts/setlocalversion            
-            sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/msm-kernel/scripts/setlocalversion
-            sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/external/dtc/scripts/setlocalversion
+          if [ "${{ github.event.client_payload.KERNEL_VERSION }}" != "6.6" ]; then
+            sed -i '$s|echo "\$res"|echo "-${{ github.event.client_payload.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/common/scripts/setlocalversion            
+            sed -i '$s|echo "\$res"|echo "-${{ github.event.client_payload.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/msm-kernel/scripts/setlocalversion
+            sed -i '$s|echo "\$res"|echo "-${{ github.event.client_payload.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/external/dtc/scripts/setlocalversion
           else
-            ESCAPED_SUFFIX=$(printf '%s\n' "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow" | sed 's:[\/&]:\\&:g')
+            ESCAPED_SUFFIX=$(printf '%s\n' "-${{ github.event.client_payload.ANDROID_VERSION }}-oki-xiaoxiaow" | sed 's:[\/&]:\\&:g')
             sudo sed -i "s/-4k/$ESCAPED_SUFFIX/g" kernel_platform/common/arch/arm64/configs/gki_defconfig
             sed -i 's/${scm_version}//' kernel_platform/common/scripts/setlocalversion
             sed -i 's/${scm_version}//' kernel_platform/msm-kernel/scripts/setlocalversion
@@ -290,7 +292,7 @@ jobs:
           echo "鉁?鍐呮牳閰嶇疆瀹屾垚"
 
       - name: "鈿?Setup Baseband-guard | 閰嶇疆 Baseband-guard"
-        if: ${{ github.event.inputs.bbg == 'On' && github.event.inputs.KPM == 'Off' }}
+        if: ${{ github.event.client_payload.bbg == 'On' && github.event.client_payload.KPM == 'Off' }}
         run: |
           set -e
           cd kernel_workspace/kernel_platform/common
@@ -320,16 +322,16 @@ jobs:
           cd kernel_workspace
 
           echo "猬囷笍 鍏嬮殕鎵€闇€琛ヤ竵..."
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then          
-            git clone https://github.com/cctv18/susfs4oki.git -b oki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
+          if [ "${{ github.event.client_payload.SUSFS }}" == "On" ]; then          
+            git clone https://github.com/cctv18/susfs4oki.git -b oki-${{ github.event.client_payload.ANDROID_VERSION }}-${{ github.event.client_payload.KERNEL_VERSION }}
           fi
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
           
           cd kernel_platform
           echo "馃摑 澶嶅埗琛ヤ竵鏂囦欢..."
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
+          if [ "${{ github.event.client_payload.SUSFS }}" == "On" ]; then
+            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-${{ github.event.client_payload.ANDROID_VERSION }}-${{ github.event.client_payload.KERNEL_VERSION }}.patch ./common/
             cp ../susfs4oki/kernel_patches/fs/* ./common/fs/
             cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
           else
@@ -338,15 +340,15 @@ jobs:
           cp ../kernel_patches/zram_patches/001-lz4.patch ./common/
           cp ../kernel_patches/zram_patches/lz4armv8.S ./common/lib
           cp ../kernel_patches/zram_patches/002-zstd.patch ./common/
-          if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
-            if [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
+          if [ "${{ github.event.client_payload.UNICODE_BYPASS }}" = "On" ]; then
+            if [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.1" ] || [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.6" ]; then
               cp ../kernel_patches/common/unicode_bypass_fix_6.1+.patch ./common/unicode_bypass_fix.patch
-            elif [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ]; then
+            elif [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "5.15" ] || [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "5.10" ]; then
               cp ../kernel_patches/common/unicode_bypass_fix_6.1-.patch ./common/unicode_bypass_fix.patch
             fi
           fi
           
-          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
+          if [ "${{ github.event.client_payload.lz4kd }}" == "On" ]; then
             # Copy lz4k from ShirkNeko
             cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
             cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
@@ -356,42 +358,42 @@ jobs:
           
           cd ./common
 
-          if [ "${{ github.event.inputs.CVE_2026_43499 }}" = "On" ]; then
+          if [ "${{ github.event.client_payload.CVE_2026_43499 }}" = "On" ]; then
             echo "馃洝锔?姝ｅ湪搴旂敤 CVE-2026-43499 rtmutex 淇琛ヤ竵..."
-            bash "$GITHUB_WORKSPACE/security_patch/apply_cve_2026_43499.sh" "${{ github.event.inputs.KERNEL_VERSION }}" "$GITHUB_WORKSPACE/security_patch"
+            bash "$GITHUB_WORKSPACE/security_patch/apply_cve_2026_43499.sh" "${{ github.event.client_payload.KERNEL_VERSION }}" "$GITHUB_WORKSPACE/security_patch"
           else
             echo "鈩癸笍 璺宠繃 CVE-2026-43499 rtmutex 淇琛ヤ竵"
           fi
 
-          if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
+          if [ "${{ github.event.client_payload.UNICODE_BYPASS }}" = "On" ]; then
             echo "馃摝 姝ｅ湪搴旂敤Unicode闆跺缁曡繃淇琛ヤ竵..."
             patch -p1 < unicode_bypass_fix.patch
           fi
 
-          if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
+          if [ "${{ github.event.client_payload.lz4kd }}" = "Off" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.1" ]; then
             echo "馃摝 搴旂敤lz4+zstd琛ヤ竵..."
             git apply -p1 < 001-lz4.patch || true
             patch -p1 < 002-zstd.patch || true
           fi
 
-          if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
+          if [ "${{ github.event.client_payload.lz4kd }}" = "Off" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.6" ]; then
             echo "馃摝 搴旂敤lz4琛ヤ竵..."
             git apply -p1 < 001-lz4.patch || true
           fi
           
-          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
+          if [ "${{ github.event.client_payload.lz4kd }}" == "On" ]; then
             echo "馃摝 搴旂敤lz4kd琛ヤ竵..."
-            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
+            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.client_payload.KERNEL_VERSION }}/lz4kd.patch ./
             patch -p1 -F 3 < lz4kd.patch || true
-            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./
+            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.client_payload.KERNEL_VERSION }}/lz4k_oplus.patch ./
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
 
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
+          if [ "${{ github.event.client_payload.SUSFS }}" == "On" ]; then
             echo "馃摝 搴旂敤SUSFS琛ヤ竵..."
             fake_patched=0
             fake_patched_expand=0
-            if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android15" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
+            if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android15" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.6" ]; then
               if ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
                 echo "nr_subpages Line not found. Fake Patching!"
                 sed -i -e '/int ret = 0, copied = 0;/a \\tunsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;' -e '/int ret = 0, copied = 0;/a \\tpagemap_entry_t \*res = NULL;' ./fs/proc/task_mmu.c
@@ -414,13 +416,13 @@ jobs:
                 fake_patched_expand=1
               fi
             fi
-            if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android12" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ]; then
+            if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android12" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "5.10" ]; then
               if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
                 echo "vma_pages Line not found. Fake Patching!"
                 fake_patched=1
               fi
             fi
-            if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android13" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ]; then
+            if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android13" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "5.15" ]; then
               if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
                 echo "vma_pages Line not found. Fake Patching!"
                 fake_patched=1
@@ -433,7 +435,7 @@ jobs:
               fi
             fi
             
-            if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android14" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
+            if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android14" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.1" ]; then
               if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
                 echo "vma_pages Line not found. Fake Patching!"
                 fake_patched=1
@@ -445,11 +447,11 @@ jobs:
               fi
             fi
             
-            patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+            patch -p1 < 50_add_susfs_in_gki-${{ github.event.client_payload.ANDROID_VERSION }}-${{ github.event.client_payload.KERNEL_VERSION }}.patch || true
             
             # Revert Fake kernel patch
             if [ "$fake_patched_expand" = 1 ]; then
-              if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android15" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
+              if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android15" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.6" ]; then
                 if grep -qF 'if (vma->vm_end > last_vma_end) {' ./fs/proc/task_mmu.c && ! grep -qxF 'SUSFS_IS_INODE_SUS_MAP' ./fs/proc/task_mmu.c; then
                   perl -i -0pe 's/\t\t\tif \(vma->vm_end > last_vma_end\) \{\n\t\t\t\tsmap_gather_stats\(vma, &mss, last_vma_end\);\n\t\t\t\tlast_vma_end = vma->vm_end;\n\t\t\t\}/\t\t\tif (vma->vm_end > last_vma_end)\n\t\t\t\tsmap_gather_stats(vma, \&mss, last_vma_end);/' ./fs/proc/task_mmu.c
                 fi
@@ -457,19 +459,19 @@ jobs:
             fi
             
             if [ "$fake_patched" = 1 ]; then
-              if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android15" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
+              if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android15" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.6" ]; then
                 if grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
                   echo "nr_subpages Line found. Revert Fake Patching!"
                   sed -i -e '/unsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;/d' -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c
                 fi
               fi
-              if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android12" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ]; then
+              if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android12" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "5.10" ]; then
                 if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
                   echo "vma_pages Line found. Revert Fake Patching!"
                   sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
                 fi
               fi
-              if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android13" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ]; then
+              if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android13" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "5.15" ]; then
                 if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
                   echo "vma_pages Line found. Revert Fake Patching!"
                   sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
@@ -480,7 +482,7 @@ jobs:
                   sed -i '/#include <linux\/vmalloc.h>/a #include <linux\/swap_slots.h>' ./mm/memory.c
                 fi
               fi
-              if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android14" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
+              if [ "${{ github.event.client_payload.ANDROID_VERSION }}" = "android14" ] && [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.1" ]; then
                 if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
                   echo "vma_pages Line found. Revert Fake Patching!"
                   sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
@@ -496,12 +498,12 @@ jobs:
           echo "鉁?鎵€鏈夎ˉ涓佸簲鐢ㄥ畬鎴?
 
       - name: "鈿欙笍 Apply SCHED Patch | 搴旂敤椋庨┌琛ヤ竵"
-        if: ${{ github.event.inputs.KERNEL_VERSION == '6.6' }}
+        if: ${{ github.event.client_payload.KERNEL_VERSION == '6.6' }}
         run: |
           cd kernel_workspace/kernel_platform/common
 
           echo "猬囷笍 姝ｅ湪鎷夊彇椋庨┌琛ヤ竵"
-          if [ "${{ github.event.inputs.FEIL }}" == "oneplus_ace5_ultra" ] || [ "${{ github.event.inputs.FEIL }}" = "oneplus_ace5_ultra_b" ]; then
+          if [ "${{ github.event.client_payload.FEIL }}" == "oneplus_ace5_ultra" ] || [ "${{ github.event.client_payload.FEIL }}" = "oneplus_ace5_ultra_b" ]; then
               echo "鈿狅笍 Ace5 Ultra 闇€瑕佷娇鐢?mt6991 鍒嗘敮鐨勮ˉ涓?
               git clone https://github.com/Numbersf/SCHED_PATCH.git -b "mt6991"
           else
@@ -509,12 +511,12 @@ jobs:
               git clone https://github.com/Numbersf/SCHED_PATCH.git -b "sm8750"
           fi
 
-          cp ./SCHED_PATCH/fengchi_${{ github.event.inputs.FEIL }}.patch ./
+          cp ./SCHED_PATCH/fengchi_${{ github.event.client_payload.FEIL }}.patch ./
 
-          if [[ -f "fengchi_${{ github.event.inputs.FEIL }}.patch" ]]; then
+          if [[ -f "fengchi_${{ github.event.client_payload.FEIL }}.patch" ]]; then
             echo "鈿欙笍 寮€濮嬪簲鐢ㄩ椹拌ˉ涓?
-            dos2unix "fengchi_${{ github.event.inputs.FEIL }}.patch"
-            patch -p1 -F 3 < "fengchi_${{ github.event.inputs.FEIL }}.patch"
+            dos2unix "fengchi_${{ github.event.client_payload.FEIL }}.patch"
+            patch -p1 -F 3 < "fengchi_${{ github.event.client_payload.FEIL }}.patch"
             echo "鉁?瀹岀編椋庨┌琛ヤ竵搴旂敤瀹屾垚"
           else
             sed -i '1iobj-y += hmbird_patch.o' drivers/Makefile
@@ -533,12 +535,12 @@ jobs:
           echo "馃摝 鍚敤 KSU 鏀寔..."
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           
-          if [ "${{ github.event.inputs.KPM }}" == "On" ]; then
+          if [ "${{ github.event.client_payload.KPM }}" == "On" ]; then
             echo "馃摝 鍚敤 KPM..."
             echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
           
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
+          if [ "${{ github.event.client_payload.SUSFS }}" == "On" ]; then
             echo "馃摝 鍚敤 SUSFS 鍔熻兘..."
             echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -560,13 +562,13 @@ jobs:
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-          if [ "${{ github.event.inputs.bbg }}" == "On" ] && [ "${{ github.event.inputs.KPM }}" == "Off" ]; then
+          if [ "${{ github.event.client_payload.bbg }}" == "On" ] && [ "${{ github.event.client_payload.KPM }}" == "Off" ]; then
             echo "鈿?閰嶇疆 BBG 涓?.."
             echo 'CONFIG_BBG=y' >> ./common/arch/arm64/configs/gki_defconfig
             echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> ./common/arch/arm64/configs/gki_defconfig
           fi          
           
-          if [ "${{ github.event.inputs.bbr }}" == "On" ]; then
+          if [ "${{ github.event.client_payload.bbr }}" == "On" ]; then
             echo "馃寪 鍚敤 BBR 缃戠粶绠楁硶..."
             echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -576,19 +578,19 @@ jobs:
             echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
           
-          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
+          if [ "${{ github.event.client_payload.lz4kd }}" == "On" ]; then
             echo "馃摝 鍚敤 lz4kd鍘嬬缉..."
             echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_ZRAM_WRITEBACK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
           
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
+          if [ "${{ github.event.client_payload.KERNEL_VERSION }}" == "6.1" ] || [ "${{ github.event.client_payload.KERNEL_VERSION }}" == "6.6" ]; then
             echo "馃摝 涓?.1 / 6.6鍔犲叆O2浼樺寲..."
             echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
 
-          if [ "${{ github.event.inputs.proxy }}" == "On" ]; then
+          if [ "${{ github.event.client_payload.proxy }}" == "On" ]; then
             # Add proxy config
             echo "馃摝 鍔犲叆浠ｇ悊浼樺寲..."
             echo "CONFIG_BPF_STREAM_PARSER=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -616,7 +618,7 @@ jobs:
             echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
           
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ]; then
+          if [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "5.10" ] || [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "5.15" ]; then
             echo "馃摝 姝ｅ湪涓?.10 / 5.15绯婚厤缃甽to涓?.."
             DEFCONFIG=./common/arch/arm64/configs/gki_defconfig
             sed -i 's/^CONFIG_LTO=n/CONFIG_LTO=y/' "$DEFCONFIG"
@@ -637,7 +639,7 @@ jobs:
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
+          if [ "${{ github.event.client_payload.KERNEL_VERSION }}" == "6.1" ]; then
             export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
             export KBUILD_BUILD_VERSION=1
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
@@ -646,21 +648,21 @@ jobs:
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
+          elif [ "${{ github.event.client_payload.KERNEL_VERSION }}" == "6.6" ]; then
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH" 
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2  gki_defconfig all
             
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
+          elif [ "${{ github.event.client_payload.KERNEL_VERSION }}" == "5.15" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
             
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
+          elif [ "${{ github.event.client_payload.KERNEL_VERSION }}" == "5.10" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install libelf-dev
@@ -691,7 +693,7 @@ jobs:
           fi
          
       - name: "馃З Patch Kernel Image (KPM) | KPM淇ˉ闀滃儚"
-        if: ${{ github.event.inputs.KPM == 'On' }}
+        if: ${{ github.event.client_payload.KPM == 'On' }}
         run: |
           echo "馃敡 姝ｅ湪搴旂敤KPM琛ヤ竵..."
           cd kernel_workspace/kernel_platform/out/Final-Image-Find
@@ -706,17 +708,17 @@ jobs:
       - name: "馃 Set Artifact Name | 璁剧疆浜х墿鍚嶇О"
         id: set_name
         run: |
-          if [ "${{ github.event.inputs.lz4kd }}" = "On" ]; then
-            BASE_NAME="${{ github.event.inputs.FEIL }}_SukiSU_Ultra_lz4kd_${{ env.KSUVER }}"
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
-            BASE_NAME="${{ github.event.inputs.FEIL }}_SukiSU_Ultra_lz4_zstd_${{ env.KSUVER }}"
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
-            BASE_NAME="${{ github.event.inputs.FEIL }}_SukiSU_Ultra_lz4_${{ env.KSUVER }}"
+          if [ "${{ github.event.client_payload.lz4kd }}" = "On" ]; then
+            BASE_NAME="${{ github.event.client_payload.FEIL }}_SukiSU_Ultra_lz4kd_${{ env.KSUVER }}"
+          elif [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.1" ]; then
+            BASE_NAME="${{ github.event.client_payload.FEIL }}_SukiSU_Ultra_lz4_zstd_${{ env.KSUVER }}"
+          elif [ "${{ github.event.client_payload.KERNEL_VERSION }}" = "6.6" ]; then
+            BASE_NAME="${{ github.event.client_payload.FEIL }}_SukiSU_Ultra_lz4_${{ env.KSUVER }}"
           else
-            BASE_NAME="${{ github.event.inputs.FEIL }}_SukiSU_Ultra_${{ env.KSUVER }}"
+            BASE_NAME="${{ github.event.client_payload.FEIL }}_SukiSU_Ultra_${{ env.KSUVER }}"
           fi
           
-          if [ "${{ github.event.inputs.SUSFS }}" = "On" ]; then
+          if [ "${{ github.event.client_payload.SUSFS }}" = "On" ]; then
             FINAL_NAME="${BASE_NAME}_SUSFS"
           else
             FINAL_NAME="${BASE_NAME}"
@@ -738,7 +740,7 @@ jobs:
       - name: "馃摛 Upload zram.ko | 涓婁紶 zram.ko"
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ github.event.inputs.FEIL }}_zram.ko
+          name: ${{ github.event.client_payload.FEIL }}_zram.ko
           path: ./kernel_workspace/kernel_platform/common/out/drivers/block/zram/zram.ko
 
       # - name: "馃 Get bot script | 鑾峰彇 bot 鑴氭湰"
@@ -761,9 +763,9 @@ jobs:
           # CHATID: ${{secrets.CHATID}}
           # BOT_TOKEN: ${{secrets.BOT_TOKEN}}
           # MESSAGE_THREAD_ID: ${{secrets.MESSAGE_THREAD_ID}}
-          # KernelVer: ${{ github.event.inputs.ANDROID_VERSION}}-${{ github.event.inputs.KERNEL_VERSION }}
-          # DEVICE: ${{ github.event.inputs.FEIL }}
-          # KPM: ${{ github.event.inputs.KPM }}
-          # LZ4KD: ${{ github.event.inputs.lz4kd }}
-          # BBR: ${{ github.event.inputs.bbr }}
+          # KernelVer: ${{ github.event.client_payload.ANDROID_VERSION}}-${{ github.event.client_payload.KERNEL_VERSION }}
+          # DEVICE: ${{ github.event.client_payload.FEIL }}
+          # KPM: ${{ github.event.client_payload.KPM }}
+          # LZ4KD: ${{ github.event.client_payload.lz4kd }}
+          # BBR: ${{ github.event.client_payload.bbr }}
           # KSU_VAR: "SukiSU"
