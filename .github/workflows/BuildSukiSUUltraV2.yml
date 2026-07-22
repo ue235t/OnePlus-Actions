@@ -1,0 +1,125 @@
+name: Build SukiSU Ultra V2
+on:
+  workflow_dispatch:
+    inputs:
+      FEIL:
+        description: "Device"
+        required: true
+        type: choice
+        options:
+          - oneplus_ace5
+          - oneplus_ace5_b
+          - oneplus_ace5_pro_b
+        default: oneplus_ace5
+      CPU:
+        description: "CPU"
+        required: true
+        type: choice
+        options:
+          - sm8650
+          - sm8750
+        default: sm8650
+      ANDROID_VERSION:
+        description: "Android"
+        required: true
+        type: choice
+        options:
+          - android14
+          - android15
+        default: android14
+      KERNEL_VERSION:
+        description: "Kernel"
+        required: true
+        type: choice
+        options:
+          - "6.1"
+          - "5.10"
+        default: "6.1"
+      SUSFS:
+        description: "SUSFS"
+        required: true
+        type: choice
+        options:
+          - "On"
+          - "Off"
+        default: "On"
+      KPM:
+        description: "KPM"
+        required: true
+        type: choice
+        options:
+          - "Off"
+          - "On"
+        default: "Off"
+      lz4kd:
+        description: "lz4kd"
+        required: true
+        type: choice
+        options:
+          - "Off"
+          - "On"
+        default: "Off"
+      bbg:
+        description: "BBG"
+        required: true
+        type: choice
+        options:
+          - "On"
+          - "Off"
+        default: "On"
+      bbr:
+        description: "BBR"
+        required: true
+        type: choice
+        options:
+          - "Off"
+          - "On"
+        default: "Off"
+      proxy:
+        description: "Proxy"
+        required: true
+        type: choice
+        options:
+          - "On"
+          - "Off"
+        default: "On"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.FEIL || 'main' }}
+          lfs: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Display inputs
+        run: |
+          echo "=== Build Parameters ==="
+          echo "Device (FEIL): ${{ github.event.inputs.FEIL }}"
+          echo "CPU: ${{ github.event.inputs.CPU }}"
+          echo "Android: ${{ github.event.inputs.ANDROID_VERSION }}"
+          echo "Kernel: ${{ github.event.inputs.KERNEL_VERSION }}"
+          echo "SUSFS: ${{ github.event.inputs.SUSFS }}"
+          echo "KPM: ${{ github.event.inputs.KPM }}"
+          echo "lz4kd: ${{ github.event.inputs.lz4kd }}"
+          echo "BBG: ${{ github.event.inputs.bbg }}"
+          echo "BBR: ${{ github.event.inputs.bbr }}"
+          echo "Proxy: ${{ github.event.inputs.proxy }}"
+
+      - name: Trigger upstream build
+        run: |
+          echo "This is a placeholder workflow."
+          echo "In a full implementation, this would:"
+          echo "1. Clone the upstream kernel source"
+          echo "2. Apply SUSFS patches"
+          echo "3. Configure with FEIL=${{ github.event.inputs.FEIL }}"
+          echo "4. Build kernel"
+          echo "5. Upload artifact"
+          echo ""
+          echo "NOTE: Full build logic needs to be replicated from the original workflow."
