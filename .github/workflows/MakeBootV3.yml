@@ -4,18 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       artifact_id:
-        description: 'SUSFS kernel artifact ID'
-        required: true
+        description: 'SUSFS kernel artifact ID (default: 8529683680)'
+        required: false
         default: '8529683680'
-        type: string
   repository_dispatch:
     types: [make_boot]
-    inputs:
-      artifact_id:
-        description: 'SUSFS kernel artifact ID'
-        required: true
-        default: '8529683680'
-        type: string
+
+env:
+  ARTIFACT_ID: ${{ github.event.inputs.artifact_id || '8529683680' }}
 
 jobs:
   make-boot:
@@ -47,8 +43,8 @@ print('Header ver:', struct.unpack_from('<I',d,40)[0])
       - name: Download kernel artifact
         run: |
           cd $HOME/boot_tool
-          echo "Downloading artifact ${{ github.event.inputs.artifact_id }}..."
-          gh run download ${{ github.event.inputs.artifact_id }} -R ue235t/OnePlus-Actions --dir kernel_artifact/
+          echo "Downloading artifact ${{ env.ARTIFACT_ID }}..."
+          gh run download ${{ env.ARTIFACT_ID }} -R ue235t/OnePlus-Actions --dir kernel_artifact/
           ls -la kernel_artifact/
 
       - name: Extract Image
@@ -56,23 +52,17 @@ print('Header ver:', struct.unpack_from('<I',d,40)[0])
           cd $HOME/boot_tool
           mkdir -p kernel_out
           unzip -o kernel_artifact/*.zip -d extracted/
-          # Find Image file
           IMG=$(find extracted/ -name "Image" -type f | head -1)
-          echo "Found Image at: $IMG"
+          echo "Found Image: $IMG"
           cp "$IMG" kernel_out/Image
           ls -la kernel_out/Image
           python3 -c "
 d=open('kernel_out/Image','rb').read()
 print('Size:', len(d), 'bytes (%.1f MB)' % (len(d)/1024/1024))
 print('Magic:', d[0:4].hex())
-import struct
-if d[0:4]==b'\x7fELF':
-    print('Type: ELF')
-    e_entry=struct.unpack_from('<Q',d,24)[0]
-    print('Entry: 0x%x' % e_entry)
 "
 
-      - name: Replace kernel
+      - name: Replace kernel in boot image
         run: |
           cd $HOME/boot_tool
           cat > kernel_replacer.py << 'PYEOF'
@@ -87,45 +77,39 @@ def main():
     print('=== OnePlus Kernel Replacer ===')
     with open(BOOT_IMG, 'rb') as f:
         boot = bytearray(f.read())
-    print('Loaded %s: %d bytes' % (BOOT_IMG, len(boot)))
+    print('Loaded %s: %d bytes (%.1f MB)' % (BOOT_IMG, len(boot), len(boot)/1024/1024))
     assert boot[0:8] == b'ANDROID!', 'ERROR: Not Android boot image!'
     
-    hdr_version = struct.unpack_from('<I', boot, 40)[0]
     kernel_offset = 0x1000  # page_size=0 => 4096
     header_kernel_size = struct.unpack_from('<I', boot, 8)[0]
-    print('Header version: %d' % hdr_version)
-    print('Kernel offset: 0x%x' % kernel_offset)
-    print('Header kernel_size: %d (%.1f MB)' % (header_kernel_size, header_kernel_size/1024/1024))
-    
     kernel_magic = boot[kernel_offset:kernel_offset+4]
+    print('Header kernel_size: %d (%.1f MB)' % (header_kernel_size, header_kernel_size/1024/1024))
     print('Kernel magic: %s' % kernel_magic.hex())
     
     with open(NEW_KERNEL, 'rb') as f:
         new_kernel = f.read()
-    new_kernel_sz = len(new_kernel)
-    print('New kernel: %d bytes (%.1f MB)' % (new_kernel_sz, new_kernel_sz/1024/1024))
+    new_sz = len(new_kernel)
+    print('New kernel: %d bytes (%.1f MB)' % (new_sz, new_sz/1024/1024))
     
-    # Build new boot image
-    # Ensure enough space
-    needed = kernel_offset + new_kernel_sz
+    # Build new boot image with enough space
+    needed = kernel_offset + new_sz
     if needed > len(boot):
-        # Expand boot image
         new_len = ((needed + 4*1024*1024 - 1) // (4*1024*1024)) * (4*1024*1024)
         new_boot = bytearray(new_len)
         new_boot[:len(boot)] = boot
-        print('Expanded boot image: %d -> %d bytes' % (len(boot), new_len))
+        print('Expanded: %d -> %d bytes' % (len(boot), new_len))
     else:
         new_boot = bytearray(boot)
     
     # Replace kernel
-    new_boot[kernel_offset:kernel_offset+new_kernel_sz] = new_kernel
+    new_boot[kernel_offset:kernel_offset+new_sz] = new_kernel
     # Zero-pad to page boundary
-    padded = ((kernel_offset + new_kernel_sz + 4095) // 4096) * 4096
-    for i in range(kernel_offset + new_kernel_sz, min(padded, len(new_boot))):
+    padded = ((kernel_offset + new_sz + 4095) // 4096) * 4096
+    for i in range(kernel_offset + new_sz, min(padded, len(new_boot))):
         new_boot[i] = 0
     
     # Update header
-    struct.pack_into('<I', new_boot, 8, new_kernel_sz)
+    struct.pack_into('<I', new_boot, 8, new_sz)
     
     # Truncate to last non-zero
     actual_end = len(new_boot)
@@ -143,13 +127,12 @@ def main():
     # Verify
     with open(OUT_BOOT, 'rb') as f:
         v = f.read()
-    assert v[0:8] == b'ANDROID!', 'Verify: header corrupt'
-    assert struct.unpack_from('<I', v, 8)[0] == new_kernel_sz, 'Verify: kernel_size wrong'
-    assert v[kernel_offset:kernel_offset+4] == new_kernel[0:4], 'Verify: kernel corrupt'
+    assert v[0:8] == b'ANDROID!', 'header corrupt'
+    assert struct.unpack_from('<I', v, 8)[0] == new_sz, 'kernel_size wrong'
+    assert v[kernel_offset:kernel_offset+4] == new_kernel[0:4], 'kernel corrupt'
     print('Verification: PASSED')
     print()
-    print('SUCCESS! Flash with: fastboot flash boot_a new_boot.img')
-    print('Or for both slots: fastboot flash boot_a new_boot.img && fastboot flash boot_b new_boot.img')
+    print('SUCCESS!')
 
 if __name__ == '__main__':
     main()
