@@ -2,7 +2,6 @@ name: Build SukiSU Ultra
 on:
   workflow_dispatch:
     inputs:
-    
       CPU:
         description: "CPU鍒嗘敮"
         required: true
@@ -22,7 +21,6 @@ on:
           - 'sm7550'
           - 'sm6375'
         default: 'sm8650'
-        
       FEIL:
         description: "鎵嬫満鍨嬪彿"
         required: true
@@ -63,7 +61,6 @@ on:
           - 'oneplus_nord_ce4_lite_5g'
           - 'oneplus_nord_ce4_b'
         default: 'oneplus_12_b'
-        
       ANDROID_VERSION:
         description: "鍐呮牳瀹夊崜KMI鐗堟湰"
         required: true
@@ -74,7 +71,6 @@ on:
           - 'android13'
           - 'android12'
         default: 'android14'
-        
       KERNEL_VERSION:
         description: "鍐呮牳鐗堟湰"
         required: true
@@ -85,7 +81,6 @@ on:
           - '5.15'
           - '5.10'
         default: '6.1'
-
       SUSFS:
         description: "鏄惁鍚敤SUSFS"
         required: true
@@ -94,7 +89,6 @@ on:
           - 'On'
           - 'Off'
         default: 'Off'
-
       KPM:
         description: "鏄惁鍚敤KPM"
         required: true
@@ -103,7 +97,6 @@ on:
           - 'On'
           - 'Off'
         default: 'Off'
-       
       lz4kd:
         description: "鏄惁鍚敤lz4kd(6.1 鍏抽棴鏃朵娇鐢?lz4 + zstd; 6.6 鍏抽棴鏃朵娇鐢?lz4)"
         required: true
@@ -112,7 +105,6 @@ on:
           - 'On'
           - 'Off'
         default: 'Off'
-
       bbg:
         description: "鏄惁鍚敤BBG鍩哄甫淇濇姢"
         required: true
@@ -121,7 +113,6 @@ on:
           - 'On'
           - 'Off'
         default: 'On'
-       
       bbr:
         description: "鏄惁鍚敤BBR绠楁硶(瀵规墜鏈烘棩鐢ㄦ棤澶ぇ鎰忎箟鐢氳嚦鍙兘璐熶紭鍖?"
         required: true
@@ -130,7 +121,6 @@ on:
           - 'On'
           - 'Off'
         default: 'Off'
-
       proxy:
         description: "鏄惁娣诲姞浠ｇ悊鎬ц兘浼樺寲(鑱斿彂绉戣姱鐗囪窇鐨勬椂鍊欒鍏抽棴鍚﹀垯鍑虹幇鎭舵€ч棶棰?"
         required: true
@@ -139,7 +129,6 @@ on:
           - 'On'
           - 'Off'
         default: 'On'
-
       UNICODE_BYPASS:
         description: "鏄惁娣诲姞Unicode闆跺缁曡繃淇琛ヤ竵(闄?.10鐗堟湰澶栫増鏈笉鎺ㄨ崘寮€鍚? 寤鸿浣跨敤 https://t.me/real5ec1cff/271 鏃犵棝淇)"
         required: true
@@ -148,7 +137,6 @@ on:
           - 'On'
           - 'Off'
         default: 'Off'
-
       CVE_2026_43499:
         description: "鏄惁搴旂敤 CVE-2026-43499 rtmutex 淇琛ヤ竵"
         required: true
@@ -179,30 +167,25 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-
       - name: "馃摜 Checkout Builder | 妫€鍑烘瀯寤鸿剼鏈?
         uses: actions/checkout@v4
-
       - name: "鈿欙笍 Setup Cache Env | 璁剧疆缂撳瓨鐜"
         run: |
           echo "馃敡 姝ｅ湪璁剧疆鏈哄瀷闅旂缂撳瓨鐩綍..."
           echo "CCACHE_DIR=$HOME/.ccache_${{ github.event.inputs.FEIL }}_SukiSU" >> $GITHUB_ENV
           mkdir -p "$HOME/.ccache_${{ github.event.inputs.FEIL }}_SukiSU"
           echo "鉁?缂撳瓨鐩綍宸茶缃? $HOME/.ccache_${{ github.event.inputs.FEIL }}_SukiSU"
-
       - name: "馃攼 Configure Git | 閰嶇疆Git璐︽埛"
         run: |
           echo "馃敡 姝ｅ湪閰嶇疆Git鐢ㄦ埛淇℃伅..."
           git config --global user.name "build"
           git config --global user.email "2210077278@qq.com"
           echo "鉁?Git閰嶇疆瀹屾垚"
-
       - name: "馃摝 Cache & Install Dependencies | 缂撳瓨 & 瀹夎鏋勫缓渚濊禆"
         uses: awalsh128/cache-apt-pkgs-action@latest 
         with: 
           packages: python3 git curl ccache libelf-dev build-essential flex bison libssl-dev libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk dos2unix
           execute_install_scripts: true
-
       - name: "馃捑 Restore ccache (With SUSFS) | 鎭㈠ccache缂撳瓨 (With SUSFS)"
         if: ${{ github.event.inputs.SUSFS == 'On' }}
         uses: actions/cache@v5
@@ -212,7 +195,6 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-SukiSU-SUSFS
             ccache-${{ runner.os }}-SukiSU-SUSFS
-
       - name: "馃捑 Restore ccache (Without SUSFS) | 鎭㈠ccache缂撳瓨 (Without SUSFS)"
         if: ${{ github.event.inputs.SUSFS == 'Off' }}
         uses: actions/cache@v5
@@ -222,12 +204,10 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-SukiSU-NoSUSFS
             ccache-${{ runner.os }}-SukiSU-NoSUSFS
-
       - name: "鈿欙笍 Initialize ccache | 鍒濆鍖朿cache"
         run: |
           echo "馃敡 姝ｅ湪鍒濆鍖朿cache..."
           INIT_FLAG="${{ env.CCACHE_DIR }}/.ccache_initialized"
-          
           if command -v ccache >/dev/null 2>&1; then
             if [ ! -f "$INIT_FLAG" ]; then
               mkdir -p "${{ env.CCACHE_DIR }}"
@@ -243,7 +223,6 @@ jobs:
           # 鏄剧ず缂撳瓨缁熻
           ccache -s
           echo "鉁?ccache鍒濆鍖栨祦绋嬪畬鎴?
-
       - name: "馃摜 Install Repo Tool | 瀹夎Repo宸ュ叿"
         run: |
           echo "猬囷笍 姝ｅ湪涓嬭浇repo宸ュ叿..."
@@ -251,22 +230,16 @@ jobs:
           chmod a+x ~/repo
           sudo mv ~/repo /usr/local/bin/repo
           echo "鉁?repo宸ュ叿瀹夎瀹屾垚"
-
       - name: "猬囷笍 Clone Kernel Source | 鍏嬮殕鍐呮牳婧愮爜"
         run: |
           mkdir kernel_workspace && cd kernel_workspace
-
           echo "馃寪 姝ｅ湪鍒濆鍖栧唴鏍镐粨搴?.."
           repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
-
           echo "馃攧 鍚屾浠ｇ爜搴?浣跨敤$(nproc --all)绾跨▼)..."
           repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle --force-sync
- 
           echo "鉁?鍐呮牳婧愮爜鍏嬮殕瀹屾垚"
-     
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-
           echo "馃敡 姝ｅ湪閰嶇疆鍐呮牳鐗堟湰淇℃伅..."
           # Remove -dirty in kernel version
           sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
@@ -275,7 +248,6 @@ jobs:
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/common/scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/msm-kernel/scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/external/dtc/scripts/setlocalversion
-          
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "6.6" ]; then
             sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/common/scripts/setlocalversion            
             sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/msm-kernel/scripts/setlocalversion
@@ -286,9 +258,7 @@ jobs:
             sed -i 's/${scm_version}//' kernel_platform/common/scripts/setlocalversion
             sed -i 's/${scm_version}//' kernel_platform/msm-kernel/scripts/setlocalversion
           fi
-
           echo "鉁?鍐呮牳閰嶇疆瀹屾垚"
-
       - name: "鈿?Setup Baseband-guard | 閰嶇疆 Baseband-guard"
         if: ${{ github.event.inputs.bbg == 'On' && github.event.inputs.KPM == 'Off' }}
         run: |
@@ -297,35 +267,27 @@ jobs:
           echo "馃洜锔?姝ｅ湪璁剧疆BBG..."
           curl -sSL https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh -o setup.sh
           bash setup.sh     
-              
       - name: "鈿?Setup SukiSU Ultra | 閰嶇疆 SukiSU Ultra"
         run: |
           cd kernel_workspace/kernel_platform
-
           # 涓嬭浇骞舵墽琛岃缃剼鏈?          echo "馃洜锔?姝ｅ湪璁剧疆SukiSU Ultra..."
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/setup.sh" | bash -s builtin
-          
           cd KernelSU
           echo "猬囷笍 涓嬭浇SukiSU璁剧疆宸ュ叿..."
           curl -L -o sukisu_setup.bin https://github.com/Xiaomichael/OnePlus-Actions/raw/Build/script/sukisu_setup.bin
           chmod +x sukisu_setup.bin
-          
           ./sukisu_setup.bin
           rm -rf ./sukisu_setup.bin
-          
           echo "鉁?SukiSU Ultra閰嶇疆瀹屾垚"
-          
       - name: "馃敡 Setup Patches | 閰嶇疆琛ヤ竵"
         run: |
           cd kernel_workspace
-
           echo "猬囷笍 鍏嬮殕鎵€闇€琛ヤ竵..."
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then          
             git clone https://github.com/cctv18/susfs4oki.git -b oki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
           fi
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
-          
           cd kernel_platform
           echo "馃摑 澶嶅埗琛ヤ竵鏂囦欢..."
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
@@ -345,7 +307,6 @@ jobs:
               cp ../kernel_patches/common/unicode_bypass_fix_6.1-.patch ./common/unicode_bypass_fix.patch
             fi
           fi
-          
           if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
             # Copy lz4k from ShirkNeko
             cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
@@ -353,32 +314,26 @@ jobs:
             cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
             cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
           fi
-          
           cd ./common
-
           if [ "${{ github.event.inputs.CVE_2026_43499 }}" = "On" ]; then
             echo "馃洝锔?姝ｅ湪搴旂敤 CVE-2026-43499 rtmutex 淇琛ヤ竵..."
             bash "$GITHUB_WORKSPACE/security_patch/apply_cve_2026_43499.sh" "${{ github.event.inputs.KERNEL_VERSION }}" "$GITHUB_WORKSPACE/security_patch"
           else
             echo "鈩癸笍 璺宠繃 CVE-2026-43499 rtmutex 淇琛ヤ竵"
           fi
-
           if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
             echo "馃摝 姝ｅ湪搴旂敤Unicode闆跺缁曡繃淇琛ヤ竵..."
             patch -p1 < unicode_bypass_fix.patch
           fi
-
           if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
             echo "馃摝 搴旂敤lz4+zstd琛ヤ竵..."
             git apply -p1 < 001-lz4.patch || true
             patch -p1 < 002-zstd.patch || true
           fi
-
           if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
             echo "馃摝 搴旂敤lz4琛ヤ竵..."
             git apply -p1 < 001-lz4.patch || true
           fi
-          
           if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
             echo "馃摝 搴旂敤lz4kd琛ヤ竵..."
             cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
@@ -386,7 +341,6 @@ jobs:
             cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
-
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
             echo "馃摝 搴旂敤SUSFS琛ヤ竵..."
             fake_patched=0
@@ -397,17 +351,14 @@ jobs:
                 sed -i -e '/int ret = 0, copied = 0;/a \\tunsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;' -e '/int ret = 0, copied = 0;/a \\tpagemap_entry_t \*res = NULL;' ./fs/proc/task_mmu.c
                 fake_patched=1
               fi
-              
               if ! grep -qxF '#include <linux/dma-buf.h>' ./fs/proc/base.c; then
                 echo "#include <linux/dma-buf.h> Line not found. Adding missing header"
                 sed -i '/#include <linux\/cpufreq_times.h>/a #include <linux\/dma-buf.h>' ./fs/proc/base.c
               fi
-              
               if ! grep -qxF '#include <linux/zswap.h>' ./mm/memory.c; then
                 echo "#include <linux/zswap.h> Line not found. Adding missing header"
                 sed -i '/#include <linux\/sched\/sysctl.h>/a #include <linux\/zswap.h>' ./mm/memory.c
               fi
-              
               if grep -qF 'if (vma->vm_end > last_vma_end)' ./fs/proc/task_mmu.c && ! grep -qxF 'SUSFS_IS_INODE_SUS_MAP' ./fs/proc/task_mmu.c; then
                 echo "Temporarily expand the `last_vma_end` `if` block to fix a matching issue."
                 perl -i -0pe 's/\t\t\tif \(vma->vm_end > last_vma_end\)\n\t\t\t\tsmap_gather_stats\(vma, &mss, last_vma_end\);/\t\t\tif (vma->vm_end > last_vma_end) {\n\t\t\t\tsmap_gather_stats(vma, \&mss, last_vma_end);\n\t\t\t\tlast_vma_end = vma->vm_end;\n\t\t\t}/' ./fs/proc/task_mmu.c
@@ -425,28 +376,23 @@ jobs:
                 echo "vma_pages Line not found. Fake Patching!"
                 fake_patched=1
               fi
-              
               if grep -qxF '#include <linux/swap_slots.h>' ./mm/memory.c; then
                 echo "#include swap_slots.h> Line found. Deleting header."
                 sed -i '/#include <linux\/swap_slots.h>/d' ./mm/memory.c
                 fake_patched=1
               fi
             fi
-            
             if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android14" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
               if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
                 echo "vma_pages Line not found. Fake Patching!"
                 fake_patched=1
               fi
-              
               if ! grep -qxF '#include <linux/dma-buf.h>' ./fs/proc/base.c; then
                 echo "#include <linux/dma-buf.h> Line not found. Adding missing header"
                 sed -i '/#include <linux\/cpufreq_times.h>/a #include <linux\/dma-buf.h>' ./fs/proc/base.c
               fi
             fi
-            
             patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
-            
             # Revert Fake kernel patch
             if [ "$fake_patched_expand" = 1 ]; then
               if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android15" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
@@ -455,7 +401,6 @@ jobs:
                 fi
               fi
             fi
-            
             if [ "$fake_patched" = 1 ]; then
               if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android15" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
                 if grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
@@ -474,7 +419,6 @@ jobs:
                   echo "vma_pages Line found. Revert Fake Patching!"
                   sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
                 fi
-                
                 if ! grep -qxF '#include <linux/swap_slots.h>' ./mm/memory.c; then
                   echo "#include <linux/swap_slots.h> Line not found. Adding missing header"
                   sed -i '/#include <linux\/vmalloc.h>/a #include <linux\/swap_slots.h>' ./mm/memory.c
@@ -492,14 +436,11 @@ jobs:
             echo "馃摝 搴旂敤MANUAL_HOOK琛ヤ竵..."
             patch -p1 -F 3 < scope_min_manual_hooks_v1.6.patch
           fi
-
           echo "鉁?鎵€鏈夎ˉ涓佸簲鐢ㄥ畬鎴?
-
       - name: "鈿欙笍 Apply SCHED Patch | 搴旂敤椋庨┌琛ヤ竵"
         if: ${{ github.event.inputs.KERNEL_VERSION == '6.6' }}
         run: |
           cd kernel_workspace/kernel_platform/common
-
           echo "猬囷笍 姝ｅ湪鎷夊彇椋庨┌琛ヤ竵"
           if [ "${{ github.event.inputs.FEIL }}" == "oneplus_ace5_ultra" ] || [ "${{ github.event.inputs.FEIL }}" = "oneplus_ace5_ultra_b" ]; then
               echo "鈿狅笍 Ace5 Ultra 闇€瑕佷娇鐢?mt6991 鍒嗘敮鐨勮ˉ涓?
@@ -508,9 +449,7 @@ jobs:
               echo "鈿欙笍 浣跨敤 sm8750 鍒嗘敮鐨勮ˉ涓?
               git clone https://github.com/Numbersf/SCHED_PATCH.git -b "sm8750"
           fi
-
           cp ./SCHED_PATCH/fengchi_${{ github.event.inputs.FEIL }}.patch ./
-
           if [[ -f "fengchi_${{ github.event.inputs.FEIL }}.patch" ]]; then
             echo "鈿欙笍 寮€濮嬪簲鐢ㄩ椹拌ˉ涓?
             dos2unix "fengchi_${{ github.event.inputs.FEIL }}.patch"
@@ -523,21 +462,16 @@ jobs:
             patch -p1 -F 3 < hmbird_patch.patch
             echo "鉁?OGKI杞崲GKI_patch瀹屾垚"
           fi
-          
       - name: "鈿欙笍 Configure Kernel Options | 閰嶇疆鍐呮牳閫夐」"
         run: |
           cd kernel_workspace/kernel_platform
-
           echo "鈿欙笍 姝ｅ湪閰嶇疆鍐呮牳缂栬瘧閫夐」..."
-          
           echo "馃摝 鍚敤 KSU 鏀寔..."
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
           if [ "${{ github.event.inputs.KPM }}" == "On" ]; then
             echo "馃摝 鍚敤 KPM..."
             echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
             echo "馃摝 鍚敤 SUSFS 鍔熻兘..."
             echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -555,17 +489,14 @@ jobs:
             echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-
           echo "鈿?娣诲姞瀵?Mountify 鐨勬敮鎸?
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
-
           if [ "${{ github.event.inputs.bbg }}" == "On" ] && [ "${{ github.event.inputs.KPM }}" == "Off" ]; then
             echo "鈿?閰嶇疆 BBG 涓?.."
             echo 'CONFIG_BBG=y' >> ./common/arch/arm64/configs/gki_defconfig
             echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> ./common/arch/arm64/configs/gki_defconfig
           fi          
-          
           if [ "${{ github.event.inputs.bbr }}" == "On" ]; then
             echo "馃寪 鍚敤 BBR 缃戠粶绠楁硶..."
             echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -575,19 +506,16 @@ jobs:
             echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
           if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
             echo "馃摝 鍚敤 lz4kd鍘嬬缉..."
             echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_ZRAM_WRITEBACK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
             echo "馃摝 涓?.1 / 6.6鍔犲叆O2浼樺寲..."
             echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-
           if [ "${{ github.event.inputs.proxy }}" == "On" ]; then
             # Add proxy config
             echo "馃摝 鍔犲叆浠ｇ悊浼樺寲..."
@@ -615,7 +543,6 @@ jobs:
             echo "CONFIG_IP6_NF_NAT=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ]; then
             echo "馃摝 姝ｅ湪涓?.10 / 5.15绯婚厤缃甽to涓?.."
             DEFCONFIG=./common/arch/arm64/configs/gki_defconfig
@@ -624,19 +551,15 @@ jobs:
             sed -i 's/^CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG"
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG"
           fi
-
           # 璺宠繃灏唘api鏍囧噯澶村畨瑁呭埌 usr/include 鐩綍鐨勪笉蹇呰鎿嶄綔锛岃妭鐪佺紪璇戞椂闂?          echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
-
           echo "鈿?Remove check_defconfig"
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "鉁?鍐呮牳閰嶇疆鏇存柊瀹屾垚"
-          
       - name: "馃敤 Build Kernel | 缂栬瘧鍐呮牳"
         run: |
           echo "馃彈锔?寮€濮嬪唴鏍哥紪璇?.."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
-
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
             export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
             export KBUILD_BUILD_VERSION=1
@@ -645,21 +568,18 @@ jobs:
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
-
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH" 
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2  gki_defconfig all
-            
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
-            
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
@@ -667,10 +587,8 @@ jobs:
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
           fi
-          
           ccache -s
           echo "鉁?鍐呮牳缂栬瘧瀹屾垚"
-          
       - name: "馃摝 Package Kernel | 鎵撳寘鍐呮牳"
         run: |
           echo "馃摝 鍑嗗AnyKernel3鎵撳寘鐜..."
@@ -689,7 +607,6 @@ jobs:
             cp "$image_path" ./AnyKernel3/Image
             cp "$image_path" kernel_workspace/kernel_platform/out/Final-Image-Find/Image
           fi
-         
       - name: "馃З Patch Kernel Image (KPM) | KPM淇ˉ闀滃儚"
         if: ${{ github.event.inputs.KPM == 'On' }}
         run: |
@@ -702,7 +619,6 @@ jobs:
           mv oImage Image
           cp Image $GITHUB_WORKSPACE/AnyKernel3/Image
           echo "鉁?KPM琛ヤ竵搴旂敤瀹屾垚"
-
       - name: "馃 Set Artifact Name | 璁剧疆浜х墿鍚嶇О"
         id: set_name
         run: |
@@ -715,37 +631,30 @@ jobs:
           else
             BASE_NAME="${{ github.event.inputs.FEIL }}_SukiSU_Ultra_${{ env.KSUVER }}"
           fi
-          
           if [ "${{ github.event.inputs.SUSFS }}" = "On" ]; then
             FINAL_NAME="${BASE_NAME}_SUSFS"
           else
             FINAL_NAME="${BASE_NAME}"
           fi
-          
           echo "ARTIFACT_NAME=${FINAL_NAME}" >> $GITHUB_OUTPUT
-
       - name: "馃摛 Upload AnyKernel3 | 涓婁紶 AnyKernel3"
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.set_name.outputs.ARTIFACT_NAME }}
           path: ./AnyKernel3/*
-         
       - name: "馃摑 Find zram.ko & crypto_zstdn.ko | 鏌ユ壘 zram.ko & crypto_zstdn.ko"
         run: |
           find -name zram.ko
           find -name crypto_zstdn.ko
-          
       - name: "馃摛 Upload zram.ko | 涓婁紶 zram.ko"
         uses: actions/upload-artifact@v7
         with:
           name: ${{ github.event.inputs.FEIL }}_zram.ko
           path: ./kernel_workspace/kernel_platform/common/out/drivers/block/zram/zram.ko
-
       # - name: "馃 Get bot script | 鑾峰彇 bot 鑴氭湰"
         # uses: actions/checkout@v6
         # with:
           # path: bot
-
       # - name: "馃摛 Upload to telegram | 涓婁紶鑷砊elegram缇ょ粍"
         # run: |
           # if [ ! -z "${{ secrets.BOT_TOKEN }}" ]; then
