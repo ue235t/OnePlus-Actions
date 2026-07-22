@@ -1,8 +1,8 @@
 name: KernelSwap V3
 on:
   workflow_dispatch:
-    inputs:
-      description: "Download boot_a.img + new kernel, swap kernel, upload new boot img"
+  repository_dispatch:
+    types: [kernel_swap]
 
 jobs:
   swap:
