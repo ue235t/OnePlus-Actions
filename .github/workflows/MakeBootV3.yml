@@ -8,6 +8,14 @@ on:
         required: true
         default: '8529683680'
         type: string
+  repository_dispatch:
+    types: [make_boot]
+    inputs:
+      artifact_id:
+        description: 'SUSFS kernel artifact ID'
+        required: true
+        default: '8529683680'
+        type: string
 
 jobs:
   make-boot:
