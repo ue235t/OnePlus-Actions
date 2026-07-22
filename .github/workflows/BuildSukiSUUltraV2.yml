@@ -339,6 +339,7 @@ jobs:
             sed -i 's/^CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
           fi
           echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IKHEADERS=n" >> ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
       - name: Build Kernel
         run: |
