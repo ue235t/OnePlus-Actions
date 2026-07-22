@@ -1,9 +1,7 @@
 name: Build SukiSU Ultra
 on:
   repository_dispatch:
-    types: [build]
-  repository_dispatch:
-    types: [build]
+    types: [build_event]
   workflow_dispatch:
     inputs:
     
@@ -174,7 +172,7 @@ jobs:
       
     steps:
       - name: "馃殌 Maximize Build Space | 鏈€澶у寲鏋勫缓绌洪棿"
-        if: ${{ github.event.client_payload.KERNEL_VERSION == '5.10' || github.event.client_payload.KERNEL_VERSION == '5.15' }}
+        if: ${{ github.event.client_payload.KERNEL_VERSION == '5.10' || github.event.inputs.KERNEL_VERSION == '5.15' }}
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
@@ -294,7 +292,7 @@ jobs:
           echo "鉁?鍐呮牳閰嶇疆瀹屾垚"
 
       - name: "鈿?Setup Baseband-guard | 閰嶇疆 Baseband-guard"
-        if: ${{ github.event.client_payload.bbg == 'On' && github.event.client_payload.KPM == 'Off' }}
+        if: ${{ github.event.client_payload.bbg == 'On' && github.event.inputs.KPM == 'Off' }}
         run: |
           set -e
           cd kernel_workspace/kernel_platform/common
