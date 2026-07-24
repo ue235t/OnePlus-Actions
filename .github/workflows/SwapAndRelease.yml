@@ -73,73 +73,116 @@ jobs:
           fi
           echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
           ls -lh "$IMG"
+          echo "BOOT_SIZE=$(stat -c%s boot_a.img)" >> $GITHUB_OUTPUT
 
-      - name: Replace kernel (pure Python)
+      - name: Replace kernel using grep + byte-range
         run: |
           python3 << 'PYEOF'
-          import struct, os, sys
+          import struct, os, sys, subprocess
 
           BOOT_IMG   = "boot_a.img"
           NEW_KERNEL = "${{ steps.find_image.outputs.IMAGE_PATH }}"
           OUT_IMG    = "new_boot_a.img"
+          BOOT_SIZE  = int("${{ steps.find_image.outputs.BOOT_SIZE }}")
 
-          # ── boot header (8192 bytes) ────────────────────────────────────
-          with open(BOOT_IMG, "rb") as f:
-              hdr = bytearray(f.read(8192))
+          # ── 1. Find kernel blob in boot.img using grep ──────────────────
+          # ELF magic = 0x7f 'E' 'L' 'F'
+          print("Scanning for ELF header in boot_a.img...")
+          result = subprocess.run(
+              ['grep', '-aob', '\x7fELF', BOOT_IMG],
+              capture_output=True, text=True
+          )
+          matches = []
+          for line in result.stdout.strip().split('\n'):
+              if not line.strip(): continue
+              try:
+                  off = int(line.split(':')[0])
+                  matches.append(off)
+              except: pass
 
-          page_size      = struct.unpack_from("<I", hdr, 0)[0]
-          kernel_offset  = struct.unpack_from("<I", hdr, 8)[0]
-          kernel_size    = struct.unpack_from("<I", hdr, 16)[0]
-          ramdisk_offset = struct.unpack_from("<I", hdr, 24)[0]
-          ramdisk_size   = struct.unpack_from("<I", hdr, 32)[0]
-          second_offset  = struct.unpack_from("<I", hdr, 36)[0]
-          hdr_ver        = struct.unpack_from("<I", hdr, 60)[0]
-
-          print(f"hdr_ver={hdr_ver}")
-          print(f"kernel:  offset=0x{kernel_offset:x}  size=0x{kernel_size:x}  ({kernel_size>>20}MB)")
-          print(f"ramdisk: offset=0x{ramdisk_offset:x}")
-          print(f"second:  offset=0x{second_offset:x}")
-          print(f"page_size={page_size}")
-
-          new_kdata = open(NEW_KERNEL, "rb").read()
-          new_ksize = len(new_kdata)
-          print(f"\nNew kernel: {new_ksize>>20}MB ({new_ksize} bytes)")
-
-          available = ramdisk_offset - kernel_offset
-          if new_ksize > available:
-              print(f"FATAL: kernel too large! {new_ksize} > {available}")
+          if not matches:
+              print("ERROR: No ELF header found in boot_a.img!")
               sys.exit(1)
 
-          # ── write new image ───────────────────────────────────────────────
+          kernel_offset = matches[0]
+          print(f"Found ELF at offset 0x{kernel_offset:x} ({kernel_offset>>20}MB)")
+
+          # ── 2. Read ELF header to get kernel size ─────────────────────────
+          with open(NEW_KERNEL, "rb") as f:
+              elf = bytearray(f.read(64))
+          e_shoff = struct.unpack_from("<Q", elf, 40)[0]  # section header offset
+          e_shentsize = struct.unpack_from("<H", elf, 58)[0]  # section header entry size
+          e_shnum = struct.unpack_from("<H", elf, 60)[0]     # number of sections
+
+          # Find the last section to determine EOF
+          max_off = 0
+          with open(NEW_KERNEL, "rb") as f:
+              for i in range(e_shnum):
+                  off = e_shoff + i * e_shentsize
+                  f.seek(off)
+                  shdr = bytearray(f.read(e_shentsize))
+                  sh_offset = struct.unpack_from("<Q", shdr, 24)[0]
+                  sh_size   = struct.unpack_from("<Q", shdr, 32)[0]
+                  end_off = sh_offset + sh_size
+                  if end_off > max_off:
+                      max_off = end_off
+
+          new_ksize = max_off if max_off > 0 else os.path.getsize(NEW_KERNEL)
+          print(f"New kernel size from ELF: {new_ksize>>20}MB")
+
+          # ── 3. Read current kernel from boot_a.img (to get its size) ──────
+          with open(BOOT_IMG, "rb") as f:
+              f.seek(kernel_offset)
+              cur_elf = bytearray(f.read(64))
+
+          cur_e_shoff = struct.unpack_from("<Q", cur_elf, 40)[0]
+          cur_e_shentsize = struct.unpack_from("<H", cur_elf, 58)[0]
+          cur_e_shnum = struct.unpack_from("<H", cur_elf, 60)[0]
+
+          cur_max_off = 0
+          with open(BOOT_IMG, "rb") as f:
+              for i in range(cur_e_shnum):
+                  off = kernel_offset + cur_e_shoff + i * cur_e_shentsize
+                  if off + cur_e_shentsize > BOOT_SIZE:
+                      break
+                  f.seek(off)
+                  shdr = bytearray(f.read(cur_e_shentsize))
+                  if len(shdr) < cur_e_shentsize: break
+                  sh_offset = struct.unpack_from("<Q", shdr, 24)[0]
+                  sh_size   = struct.unpack_from("<Q", shdr, 32)[0]
+                  end_off = sh_offset + sh_size
+                  if end_off > cur_max_off:
+                      cur_max_off = end_off
+
+          old_ksize = cur_max_off
+          if old_ksize == 0:
+              old_ksize = 0x22000000  # fallback: assume 34MB
+          print(f"Old kernel size: {old_ksize>>20}MB")
+
+          # ── 4. Write new boot image ──────────────────────────────────────
+          total_new = kernel_offset + new_ksize
+          print(f"New total: {total_new>>20}MB (0x{total_new:x})")
+          if total_new > BOOT_SIZE:
+              print(f"ERROR: new kernel too large! {new_ksize} + header {kernel_offset} > {BOOT_SIZE}")
+              sys.exit(1)
+
           with open(BOOT_IMG, "rb") as fi:
               with open(OUT_IMG, "wb") as fo:
-                  fi.seek(0)
-                  # header + old kernel space (copy all bytes up to kernel end)
-                  fo.write(fi.read(kernel_offset + kernel_size))
-                  # new kernel
+                  # Copy everything up to old kernel
+                  fo.write(fi.read(kernel_offset))
+                  # Write new kernel
+                  new_kdata = open(NEW_KERNEL, "rb").read()
                   fo.write(new_kdata)
-                  # pad to next page
-                  cur = kernel_offset + new_ksize
-                  if cur % page_size:
-                      pad = page_size - (cur % page_size)
-                      fo.write(b'\x00' * pad)
-                      cur += pad
-                  print(f"After kernel+pad: 0x{cur:x} ({cur>>20}MB)")
-                  # copy second stage + ramdisk + rest
-                  start = second_offset if second_offset > 0 else cur
-                  fi.seek(start)
+                  # Copy rest of boot image (after old kernel)
+                  fi.seek(kernel_offset + old_ksize)
                   while True:
                       chunk = fi.read(2*1024*1024)
                       if not chunk: break
                       fo.write(chunk)
 
-          # ── update kernel_size in header ──────────────────────────────────
-          with open(OUT_IMG, "r+b") as f:
-              f.seek(16)
-              f.write(struct.pack("<I", new_ksize))
-
           out_sz = os.path.getsize(OUT_IMG)
-          print(f"\nDone! new_boot_a.img = {out_sz>>20}MB")
+          print(f"\nDone! new_boot_a.img = {out_sz>>20}MB ({out_sz} bytes)")
+          print(f"Boot size: {BOOT_SIZE>>20}MB")
           PYEOF
 
       - name: Upload new_boot_a.img as artifact
