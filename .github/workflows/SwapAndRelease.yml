@@ -63,17 +63,42 @@ jobs:
           echo "---"
           ls -lh boot_a.img
 
+      - name: Inspect artifact structure
+        run: |
+          echo "=== artifact root ==="
+          ls -lhR artifact/ 2>&1 | head -30
+          echo ""
+          echo "=== check for zip files ==="
+          find artifact/ -name "*.zip" -ls
+
       - name: Find Image
         id: find_image
         run: |
-          IMG=$(find artifact/ -name "Image" | head -1)
-          if [ -z "$IMG" ]; then
-            echo "ERROR: No Image found"
-            exit 1
+          # First try direct find
+          IMG=$(find artifact/ -name "Image" 2>/dev/null | head -1)
+          if [ -n "$IMG" ]; then
+            echo "Found directly: $IMG"
+            echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
+            ls -lh "$IMG"
+            echo "BOOT_SIZE=$(stat -c%s boot_a.img)" >> $GITHUB_OUTPUT
+            exit 0
           fi
-          echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
-          ls -lh "$IMG"
-          echo "BOOT_SIZE=$(stat -c%s boot_a.img)" >> $GITHUB_OUTPUT
+          # Try extracting nested zips
+          for zip in $(find artifact/ -name "*.zip" 2>/dev/null); do
+            echo "Extracting: $zip"
+            unzip -o "$zip" -d artifact/extracted/ 2>&1 | tail -3
+          done
+          IMG=$(find artifact/extracted/ -name "Image" 2>/dev/null | head -1)
+          if [ -n "$IMG" ]; then
+            echo "Found after extract: $IMG"
+            echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
+            ls -lh "$IMG"
+            echo "BOOT_SIZE=$(stat -c%s boot_a.img)" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "ERROR: No Image found anywhere"
+          find artifact/ -type f | head -20
+          exit 1
 
       - name: Replace kernel using grep + byte-range
         run: |
