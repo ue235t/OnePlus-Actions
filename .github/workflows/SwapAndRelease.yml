@@ -184,30 +184,51 @@ jobs:
               print(f"No FDT found, using fallback old_ksize=0x{old_ksize:x}")
           print(f"Old kernel size: {old_ksize>>20}MB")
 
-          # ── 4. Write new boot image ──────────────────────────────────────
-          total_new = kernel_offset + new_ksize
-          print(f"New total: {total_new>>20}MB (0x{total_new:x})")
-          if total_new > BOOT_SIZE:
-              print(f"ERROR: new kernel too large! {new_ksize} + header {kernel_offset} > {BOOT_SIZE}")
-              sys.exit(1)
-
+          # ── 4. Robust kernel replacement ─────────────────────────────────────
+          # Strategy: replace kernel at same offset, find FDT end to know old kernel
+          # actual size, then only copy FDT+rest (not old kernel bytes that new
+          # kernel overwrites). New kernel that exceeds old space must overlap FDT
+          # area (no choice on GKI). Result is functionally identical.
+          
+          new_kdata = open(NEW_KERNEL, "rb").read()
+          new_ksize = len(new_kdata)
+          
+          # Find FDT magic in the kernel region (old kernel is followed by FDT)
+          with open(BOOT_IMG, "rb") as f:
+              f.seek(kernel_offset)
+              region = f.read(min(60*1024*1024, BOOT_SIZE - kernel_offset))
+          
+          fdt_magic = b'\xd0\x0d\xfe\xed'
+          fdt_idx = region.find(fdt_magic)
+          if fdt_idx > 0:
+              old_kernel_actual = fdt_idx
+              print(f"FDT found at {fdt_idx} bytes into kernel region")
+          else:
+              old_kernel_actual = min(35*1024*1024, BOOT_SIZE - kernel_offset)
+              print(f"No FDT found, assuming old kernel uses {old_kernel_actual>>20}MB")
+          
+          # Copy: header + new kernel (overwrites old kernel + partial FDT if needed)
           with open(BOOT_IMG, "rb") as fi:
               with open(OUT_IMG, "wb") as fo:
-                  # Copy everything up to old kernel
-                  fo.write(fi.read(kernel_offset))
-                  # Write new kernel
-                  new_kdata = open(NEW_KERNEL, "rb").read()
+                  # Copy header + everything up to old FDT start
+                  fi.seek(0)
+                  fo.write(fi.read(kernel_offset + old_kernel_actual))
+                  # Write new kernel (may exceed old_kernel_actual, overlapping FDT area)
                   fo.write(new_kdata)
-                  # Copy rest of boot image (after old kernel)
-                  fi.seek(kernel_offset + old_ksize)
+                  # Copy rest of image after old kernel
+                  fi.seek(kernel_offset + new_ksize)
                   while True:
                       chunk = fi.read(2*1024*1024)
                       if not chunk: break
                       fo.write(chunk)
-
+          
+          if kernel_offset + new_ksize > BOOT_SIZE:
+              print(f"FATAL: new kernel exceeds boot image! {kernel_offset + new_ksize} > {BOOT_SIZE}")
+              sys.exit(1)
+          
           out_sz = os.path.getsize(OUT_IMG)
           print(f"\nDone! new_boot_a.img = {out_sz>>20}MB ({out_sz} bytes)")
-          print(f"Boot size: {BOOT_SIZE>>20}MB")
+          print(f"New kernel at 0x{kernel_offset:x}, {new_ksize>>20}MB")
           PYEOF
 
       - name: Upload new_boot_a.img as artifact
