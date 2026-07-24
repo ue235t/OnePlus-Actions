@@ -1,0 +1,151 @@
+name: Swap and Release
+on:
+  repository_dispatch:
+    types: [kernel_swap_final]
+
+env:
+  FEIL: ${{ github.event.client_payload.FEIL || 'oneplus_ace5_b' }}
+  KERNEL_VERSION: ${{ github.event.client_payload.KERNEL_VERSION || '6.1' }}
+  ANDROID_VERSION: ${{ github.event.client_payload.ANDROID_VERSION || 'android14' }}
+  SUSFS: ${{ github.event.client_payload.SUSFS || 'On' }}
+  RUN_ID: ${{ github.event.client_payload.RUN_ID || '29919246300' }}
+
+jobs:
+  swap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Debug payload
+        run: |
+          echo "FEIL=$FEIL"
+          echo "KERNEL_VERSION=$KERNEL_VERSION"
+          echo "SUSFS=$SUSFS"
+          echo "RUN_ID=$RUN_ID"
+
+      - name: Compute artifact name
+        id: artifact_name
+        run: |
+          FEIL="$FEIL"
+          KV="$KERNEL_VERSION"
+          SUS="$SUSFS"
+          if [ "$KV" = "6.1" ]; then
+            BASE="${FEIL}_SukiSU_Ultra_lz4_zstd_v1"
+          elif [ "$KV" = "6.6" ]; then
+            BASE="${FEIL}_SukiSU_Ultra_lz4_v1"
+          else
+            BASE="${FEIL}_SukiSU_Ultra_v1"
+          fi
+          if [ "$SUS" = "On" ]; then
+            ARTIFACT="${BASE}_SUSFS"
+          else
+            ARTIFACT="$BASE"
+          fi
+          echo "ARTIFACT_NAME=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "ARTIFACT_NAME=$ARTIFACT"
+
+      - name: Download stock boot_a.img
+        run: |
+          wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
+          ls -lh boot_a.img
+
+      - name: Download kernel artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ env.RUN_ID }}
+          repo: ue235t/OnePlus-Actions
+          name: ${{ steps.artifact_name.outputs.ARTIFACT_NAME }}
+          path: artifact
+          github-token: ${{ github.token }}
+
+      - name: Show files
+        run: |
+          find artifact/ -type f | head -10
+          echo "---"
+          ls -lh boot_a.img
+
+      - name: Find Image
+        id: find_image
+        run: |
+          IMG=$(find artifact/ -name "Image" | head -1)
+          if [ -z "$IMG" ]; then
+            echo "ERROR: No Image found"
+            exit 1
+          fi
+          echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
+          ls -lh "$IMG"
+
+      - name: Replace kernel (pure Python)
+        run: |
+          python3 << 'PYEOF'
+          import struct, os, sys
+
+          BOOT_IMG   = "boot_a.img"
+          NEW_KERNEL = "${{ steps.find_image.outputs.IMAGE_PATH }}"
+          OUT_IMG    = "new_boot_a.img"
+
+          # ── boot header (8192 bytes) ────────────────────────────────────
+          with open(BOOT_IMG, "rb") as f:
+              hdr = bytearray(f.read(8192))
+
+          page_size      = struct.unpack_from("<I", hdr, 0)[0]
+          kernel_offset  = struct.unpack_from("<I", hdr, 8)[0]
+          kernel_size    = struct.unpack_from("<I", hdr, 16)[0]
+          ramdisk_offset = struct.unpack_from("<I", hdr, 24)[0]
+          ramdisk_size   = struct.unpack_from("<I", hdr, 32)[0]
+          second_offset  = struct.unpack_from("<I", hdr, 36)[0]
+          hdr_ver        = struct.unpack_from("<I", hdr, 60)[0]
+
+          print(f"hdr_ver={hdr_ver}")
+          print(f"kernel:  offset=0x{kernel_offset:x}  size=0x{kernel_size:x}  ({kernel_size>>20}MB)")
+          print(f"ramdisk: offset=0x{ramdisk_offset:x}")
+          print(f"second:  offset=0x{second_offset:x}")
+          print(f"page_size={page_size}")
+
+          new_kdata = open(NEW_KERNEL, "rb").read()
+          new_ksize = len(new_kdata)
+          print(f"\nNew kernel: {new_ksize>>20}MB ({new_ksize} bytes)")
+
+          available = ramdisk_offset - kernel_offset
+          if new_ksize > available:
+              print(f"FATAL: kernel too large! {new_ksize} > {available}")
+              sys.exit(1)
+
+          # ── write new image ───────────────────────────────────────────────
+          with open(BOOT_IMG, "rb") as fi:
+              with open(OUT_IMG, "wb") as fo:
+                  fi.seek(0)
+                  # header + old kernel space (copy all bytes up to kernel end)
+                  fo.write(fi.read(kernel_offset + kernel_size))
+                  # new kernel
+                  fo.write(new_kdata)
+                  # pad to next page
+                  cur = kernel_offset + new_ksize
+                  if cur % page_size:
+                      pad = page_size - (cur % page_size)
+                      fo.write(b'\x00' * pad)
+                      cur += pad
+                  print(f"After kernel+pad: 0x{cur:x} ({cur>>20}MB)")
+                  # copy second stage + ramdisk + rest
+                  start = second_offset if second_offset > 0 else cur
+                  fi.seek(start)
+                  while True:
+                      chunk = fi.read(2*1024*1024)
+                      if not chunk: break
+                      fo.write(chunk)
+
+          # ── update kernel_size in header ──────────────────────────────────
+          with open(OUT_IMG, "r+b") as f:
+              f.seek(16)
+              f.write(struct.pack("<I", new_ksize))
+
+          out_sz = os.path.getsize(OUT_IMG)
+          print(f"\nDone! new_boot_a.img = {out_sz>>20}MB")
+          PYEOF
+
+      - name: Upload new_boot_a.img as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: new_boot_a_SUSFS
+          path: new_boot_a.img
+          retention-days: 5
+          compression-level: 0
