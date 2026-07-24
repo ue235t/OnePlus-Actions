@@ -1,6 +1,8 @@
 name: KernelSwap
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [kernel_swap]
 
 jobs:
   swap:
