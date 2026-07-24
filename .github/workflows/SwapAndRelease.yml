@@ -152,8 +152,8 @@ jobs:
                   if end_off > max_off:
                       max_off = end_off
 
-          new_ksize = max_off if max_off > 0 else os.path.getsize(NEW_KERNEL)
-          print(f"New kernel size from ELF: {new_ksize>>20}MB")
+          new_ksize = os.path.getsize(NEW_KERNEL)
+          print(f"New kernel size (file): {new_ksize>>20}MB ({new_ksize} bytes)")
 
           # ── 3. Read current kernel from boot_a.img (to get its size) ──────
           with open(BOOT_IMG, "rb") as f:
@@ -164,24 +164,24 @@ jobs:
           cur_e_shentsize = struct.unpack_from("<H", cur_elf, 58)[0]
           cur_e_shnum = struct.unpack_from("<H", cur_elf, 60)[0]
 
-          cur_max_off = 0
+          # Find end of old kernel by scanning for FDT magic (0xD00DFEED, big-endian)
+          # In Android boot images the kernel is followed by a flat device tree
           with open(BOOT_IMG, "rb") as f:
-              for i in range(cur_e_shnum):
-                  off = kernel_offset + cur_e_shoff + i * cur_e_shentsize
-                  if off + cur_e_shentsize > BOOT_SIZE:
-                      break
-                  f.seek(off)
-                  shdr = bytearray(f.read(cur_e_shentsize))
-                  if len(shdr) < cur_e_shentsize: break
-                  sh_offset = struct.unpack_from("<Q", shdr, 24)[0]
-                  sh_size   = struct.unpack_from("<Q", shdr, 32)[0]
-                  end_off = sh_offset + sh_size
-                  if end_off > cur_max_off:
-                      cur_max_off = end_off
-
-          old_ksize = cur_max_off
+              f.seek(kernel_offset)
+              # Search within first 50MB after kernel start for FDT magic
+              search_buf = f.read(min(50*1024*1024, BOOT_SIZE - kernel_offset))
+          
+          old_ksize = 0
+          fdt_magic = b'\xd0\x0d\xfe\xed'
+          idx = search_buf.find(fdt_magic)
+          if idx >= 0:
+              old_ksize = idx
+              print(f"Found FDT magic at offset {idx} from kernel start")
+          
           if old_ksize == 0:
-              old_ksize = 0x22000000  # fallback: assume 34MB
+              # Fallback: assume kernel takes 35MB (0x2300000)
+              old_ksize = 0x2300000
+              print(f"No FDT found, using fallback old_ksize=0x{old_ksize:x}")
           print(f"Old kernel size: {old_ksize>>20}MB")
 
           # ── 4. Write new boot image ──────────────────────────────────────
