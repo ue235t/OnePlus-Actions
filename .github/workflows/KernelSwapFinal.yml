@@ -1,0 +1,121 @@
+name: KernelSwap Final
+on:
+  workflow_dispatch:
+
+jobs:
+  swap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download stock boot_a.img
+        run: |
+          wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
+          ls -lh boot_a.img
+
+      - name: Download SUSFS kernel artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 29919246300
+          repo: ue235t/OnePlus-Actions
+          name: oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS
+          path: artifact
+          github-token: ${{ github.token }}
+
+      - name: Show artifact contents
+        run: |
+          find artifact/ -type f | head -20
+          ls -lh artifact/oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS/ 2>/dev/null || ls -lh artifact/
+
+      - name: Replace kernel
+        run: |
+          python3 << 'PYEOF'
+          import struct, os
+
+          BOOT_IMG = "boot_a.img"
+          NEW_KERNEL = "artifact/oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS/Image"
+          if not os.path.exists(NEW_KERNEL):
+              NEW_KERNEL = "artifact/Image"
+          OUT_IMG = "new_boot_a.img"
+
+          with open(BOOT_IMG, "rb") as f:
+              hdr = bytearray(f.read(8192))
+
+          page_size = struct.unpack_from("<I", hdr, 0)[0]
+          kernel_offset = struct.unpack_from("<I", hdr, 8)[0]
+          kernel_size    = struct.unpack_from("<I", hdr, 16)[0]
+          ramdisk_offset = struct.unpack_from("<I", hdr, 24)[0]
+          ramdisk_size   = struct.unpack_from("<I", hdr, 32)[0]
+          second_offset  = struct.unpack_from("<I", hdr, 36)[0]
+          kernel_addr     = struct.unpack_from("<I", hdr, 48)[0]
+          ramdisk_addr    = struct.unpack_from("<I", hdr, 52)[0]
+          hdr_ver        = struct.unpack_from("<I", hdr, 60)[0]
+
+          print(f"page_size=0x{page_size:x}")
+          print(f"kernel:  offset=0x{kernel_offset:x}  size=0x{kernel_size:x} ({kernel_size//1024//1024}MB)")
+          print(f"ramdisk: offset=0x{ramdisk_offset:x}  size=0x{ramdisk_size:x}")
+          print(f"second:  offset=0x{second_offset:x}")
+          print(f"hdr_ver={hdr_ver}")
+
+          new_kdata = open(NEW_KERNEL, "rb").read()
+          new_ksize = len(new_kdata)
+          print(f"\nNew kernel: {new_ksize//1024//1024}MB ({new_ksize} bytes)")
+
+          # Build new image: header + new kernel + padding + rest
+          with open(BOOT_IMG, "rb") as fi:
+              with open(OUT_IMG, "wb") as fo:
+                  # Copy header through old kernel end
+                  fi.seek(0)
+                  fo.write(fi.read(kernel_offset + kernel_size))
+                  # Write new kernel
+                  fo.write(new_kdata)
+                  # Pad to next page boundary after new kernel
+                  cur = kernel_offset + new_ksize
+                  pagesz = page_size
+                  if cur % pagesz:
+                      pad = pagesz - (cur % pagesz)
+                      fo.write(b'\x00' * pad)
+                      cur += pad
+                  print(f"After kernel+pad: 0x{cur:x}")
+                  # Copy second stage + ramdisk + rest (from second_offset onward)
+                  if second_offset > 0:
+                      fi.seek(second_offset)
+                  else:
+                      fi.seek(cur)
+                  while True:
+                      chunk = fi.read(1024*1024)
+                      if not chunk: break
+                      fo.write(chunk)
+
+          # Update kernel_size in header of new image
+          with open(OUT_IMG, "r+b") as f:
+              f.seek(16)
+              f.write(struct.pack("<I", new_ksize))
+              if hdr_ver >= 2:
+                  f.seek(80)
+                  f.write(struct.pack("<I", kernel_addr))
+                  f.seek(84)
+                  f.write(struct.pack("<I", new_ksize))
+
+          sz = os.path.getsize(OUT_IMG)
+          print(f"\nDone! new_boot_a.img = {sz//1024//1024}MB")
+          print(f"Stock boot_a.img     = {os.path.getsize(BOOT_IMG)//1024//1024}MB")
+          PYEOF
+
+      - name: Upload flashable image
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: susfs-ready
+          name: "SUSFS 完整镜像 (下载后直接 fastboot 刷入)"
+          body: |
+            **new_boot_a.img** = 原厂 boot_a.img + SUSFS SukiSU Ultra 内核
+
+            刷入方法（手机进入 Fastboot 模式连接电脑）：
+            ```
+            fastboot flash boot_a new_boot_a.img
+            fastboot set_active a
+            fastboot reboot
+            ```
+          files: new_boot_a.img
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
