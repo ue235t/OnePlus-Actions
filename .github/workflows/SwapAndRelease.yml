@@ -1,33 +1,23 @@
-name: Swap and Release
+name: 'Swap and Release'
 on:
   repository_dispatch:
     types: [kernel_swap_final]
 
-env:
-  FEIL: ${{ github.event.client_payload.FEIL || 'oneplus_ace5_b' }}
-  KERNEL_VERSION: ${{ github.event.client_payload.KERNEL_VERSION || '6.1' }}
-  ANDROID_VERSION: ${{ github.event.client_payload.ANDROID_VERSION || 'android14' }}
-  SUSFS: ${{ github.event.client_payload.SUSFS || 'On' }}
-  RUN_ID: ${{ github.event.client_payload.RUN_ID || '29919246300' }}
-
 jobs:
   swap:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
     steps:
-      - name: Debug payload
+      - name: Download stock boot_a.img
         run: |
-          echo "FEIL=$FEIL"
-          echo "KERNEL_VERSION=$KERNEL_VERSION"
-          echo "SUSFS=$SUSFS"
-          echo "RUN_ID=$RUN_ID"
+          wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
+          echo "BOOT_SIZE=$(stat -c%s boot_a.img)" >> $GITHUB_OUTPUT
+          ls -lh boot_a.img
 
       - name: Compute artifact name
-        id: artifact_name
         run: |
-          FEIL="$FEIL"
-          KV="$KERNEL_VERSION"
-          SUS="$SUSFS"
+          FEIL="${{ vars.FEIL || 'oneplus_ace5_b' }}"
+          KV="${{ vars.KERNEL_VERSION || '6.1' }}"
+          SUS="${{ vars.SUSFS || 'On' }}"
           if [ "$KV" = "6.1" ]; then
             BASE="${FEIL}_SukiSU_Ultra_lz4_zstd_v1"
           elif [ "$KV" = "6.6" ]; then
@@ -41,27 +31,54 @@ jobs:
             ARTIFACT="$BASE"
           fi
           echo "ARTIFACT_NAME=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "RUN_ID=29919246300" >> $GITHUB_OUTPUT
+          echo "FEIL=$FEIL" >> $GITHUB_OUTPUT
           echo "ARTIFACT_NAME=$ARTIFACT"
-
-      - name: Download stock boot_a.img
-        run: |
-          wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
-          ls -lh boot_a.img
 
       - name: Download kernel artifact
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ env.RUN_ID }}
-          repo: ue235t/OnePlus-Actions
-          name: ${{ steps.artifact_name.outputs.ARTIFACT_NAME }}
+          name: ${{ steps.find_image.outputs.ARTIFACT_NAME || 'oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS' }}
+          run-id: ${{ steps.find_image.outputs.RUN_ID || '29919246300' }}
           path: artifact
-          github-token: ${{ github.token }}
 
-      - name: Show files
+      - name: Find Image
+        id: find_image
         run: |
-          find artifact/ -type f | head -10
-          echo "---"
-          ls -lh boot_a.img
+          FEIL="${{ steps.compute.outputs.FEIL }}"
+          KV="${{ vars.KERNEL_VERSION || '6.1' }}"
+          SUS="${{ vars.SUSFS || 'On' }}"
+          if [ "$KV" = "6.1" ]; then
+            BASE="${FEIL}_SukiSU_Ultra_lz4_zstd_v1"
+          elif [ "$KV" = "6.6" ]; then
+            BASE="${FEIL}_SukiSU_Ultra_lz4_v1"
+          else
+            BASE="${FEIL}_SukiSU_Ultra_v1"
+          fi
+          if [ "$SUS" = "On" ]; then
+            ARTIFACT="${BASE}_SUSFS"
+          else
+            ARTIFACT="$BASE"
+          fi
+          echo "ARTIFACT_NAME=$ARTIFACT"
+          echo "RUN_ID=${{ vars.KERNEL_RUN_ID || '29919246300' }}"
+          echo "FEIL=$FEIL"
+          echo "ARTIFACT_NAME=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "RUN_ID=${{ vars.KERNEL_RUN_ID || '29919246300' }}" >> $GITHUB_OUTPUT
+          echo "FEIL=$FEIL" >> $GITHUB_OUTPUT
+          # Find Image inside artifact (may be inside a zip)
+          IMG="artifact/Image"
+          if [ ! -f "$IMG" ]; then
+            ZIP=$(find artifact/ -name "*.zip" | head -1)
+            if [ -n "$ZIP" ]; then
+              echo "Found zip: $ZIP"
+              unzip -o "$ZIP" Image -d artifact_extracted/
+              IMG="artifact_extracted/Image"
+            fi
+          fi
+          echo "IMAGE_PATH=$IMG"
+          echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
+          ls -lh "$IMG"
 
       - name: Inspect artifact structure
         run: |
@@ -71,36 +88,7 @@ jobs:
           echo "=== check for zip files ==="
           find artifact/ -name "*.zip" -ls
 
-      - name: Find Image
-        id: find_image
-        run: |
-          # First try direct find
-          IMG=$(find artifact/ -name "Image" 2>/dev/null | head -1)
-          if [ -n "$IMG" ]; then
-            echo "Found directly: $IMG"
-            echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
-            ls -lh "$IMG"
-            echo "BOOT_SIZE=$(stat -c%s boot_a.img)" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          # Try extracting nested zips
-          for zip in $(find artifact/ -name "*.zip" 2>/dev/null); do
-            echo "Extracting: $zip"
-            unzip -o "$zip" -d artifact/extracted/ 2>&1 | tail -3
-          done
-          IMG=$(find artifact/extracted/ -name "Image" 2>/dev/null | head -1)
-          if [ -n "$IMG" ]; then
-            echo "Found after extract: $IMG"
-            echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
-            ls -lh "$IMG"
-            echo "BOOT_SIZE=$(stat -c%s boot_a.img)" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          echo "ERROR: No Image found anywhere"
-          find artifact/ -type f | head -20
-          exit 1
-
-      - name: Replace kernel using grep + byte-range
+      - name: Replace kernel (safe in-place)
         run: |
           python3 << 'PYEOF'
           import struct, os, sys, subprocess
@@ -108,11 +96,17 @@ jobs:
           BOOT_IMG   = "boot_a.img"
           NEW_KERNEL = "${{ steps.find_image.outputs.IMAGE_PATH }}"
           OUT_IMG    = "new_boot_a.img"
-          BOOT_SIZE  = int("${{ steps.find_image.outputs.BOOT_SIZE }}")
+          BOOT_SIZE  = int(open("boot_a.img","rb").read().__len__())  # get file size
 
-          # ── 1. Find kernel blob in boot.img using grep ──────────────────
-          # ELF magic = 0x7f 'E' 'L' 'F'
-          print("Scanning for ELF header in boot_a.img...")
+          print(f"Boot image size: {BOOT_SIZE>>20}MB ({BOOT_SIZE} bytes)")
+
+          # ── 1. Read the ENTIRE boot image into memory ──────────────────────
+          print("Reading full boot image into memory...")
+          with open(BOOT_IMG, "rb") as f:
+              boot_data = bytearray(f.read())
+          print(f"Read {len(boot_data)>>20}MB")
+
+          # ── 2. Find kernel offset via grep ──────────────────────────────────
           result = subprocess.run(
               ['grep', '-aob', '\x7fELF', BOOT_IMG],
               capture_output=True, text=True
@@ -126,109 +120,66 @@ jobs:
               except: pass
 
           if not matches:
-              print("ERROR: No ELF header found in boot_a.img!")
+              print("ERROR: No ELF header found!")
               sys.exit(1)
 
           kernel_offset = matches[0]
-          print(f"Found ELF at offset 0x{kernel_offset:x} ({kernel_offset>>20}MB)")
+          print(f"Kernel ELF at offset 0x{kernel_offset:x} ({kernel_offset>>20}MB)")
 
-          # ── 2. Read ELF header to get kernel size ─────────────────────────
-          with open(NEW_KERNEL, "rb") as f:
-              elf = bytearray(f.read(64))
-          e_shoff = struct.unpack_from("<Q", elf, 40)[0]  # section header offset
-          e_shentsize = struct.unpack_from("<H", elf, 58)[0]  # section header entry size
-          e_shnum = struct.unpack_from("<H", elf, 60)[0]     # number of sections
-
-          # Find the last section to determine EOF
-          max_off = 0
-          with open(NEW_KERNEL, "rb") as f:
-              for i in range(e_shnum):
-                  off = e_shoff + i * e_shentsize
-                  f.seek(off)
-                  shdr = bytearray(f.read(e_shentsize))
-                  sh_offset = struct.unpack_from("<Q", shdr, 24)[0]
-                  sh_size   = struct.unpack_from("<Q", shdr, 32)[0]
-                  end_off = sh_offset + sh_size
-                  if end_off > max_off:
-                      max_off = end_off
-
+          # ── 3. Read boot image header to get kernel_size ────────────────────
+          # Android boot img header (2KB page):
+          #   0x00: magic "ANDROID!"
+          #   0x04: kernel_size (uint32, little-endian)
+          #   0x08: kernel_addr (uint32)
+          #   0x0C: ramdisk_size (uint32)
+          #   0x10: ramdisk_addr (uint32)
+          #   ...
+          header = boot_data[:2048]
+          magic = header[:8]
+          if magic != b'ANDROID!':
+              print(f"WARNING: unusual magic: {magic}")
+          
+          kernel_size_hdr = struct.unpack_from("<I", header, 0x04)[0]
+          print(f"Header kernel_size: {kernel_size_hdr>>20}MB ({kernel_size_hdr} bytes)")
+          
           new_ksize = os.path.getsize(NEW_KERNEL)
-          print(f"New kernel size (file): {new_ksize>>20}MB ({new_ksize} bytes)")
+          print(f"New kernel size: {new_ksize>>20}MB ({new_ksize} bytes)")
 
-          # ── 3. Read current kernel from boot_a.img (to get its size) ──────
-          with open(BOOT_IMG, "rb") as f:
-              f.seek(kernel_offset)
-              cur_elf = bytearray(f.read(64))
+          # ── 4. Update header kernel_size to match new kernel ────────────────
+          struct.pack_into("<I", boot_data, 0x04, new_ksize)
+          print(f"Updated header kernel_size: {new_ksize} bytes")
 
-          cur_e_shoff = struct.unpack_from("<Q", cur_elf, 40)[0]
-          cur_e_shentsize = struct.unpack_from("<H", cur_elf, 58)[0]
-          cur_e_shnum = struct.unpack_from("<H", cur_elf, 60)[0]
+          # ── 5. Overwrite kernel region in-place in memory ───────────────────
+          # Read new kernel bytes
+          with open(NEW_KERNEL, "rb") as f:
+              new_kdata = f.read()
+          
+          # Overwrite kernel region at kernel_offset
+          end_offset = kernel_offset + new_ksize
+          if end_offset > len(boot_data):
+              # Expand the bytearray if needed (new kernel larger than old region)
+              boot_data.extend(b'\x00' * (end_offset - len(boot_data)))
+          
+          boot_data[kernel_offset:end_offset] = new_kdata
+          print(f"Kernel written: offset=0x{kernel_offset:x}, size={new_ksize>>20}MB")
+          
+          if kernel_size_hdr > 0:
+              overlap = max(0, end_offset - (kernel_offset + kernel_size_hdr))
+              if overlap > 0:
+                  print(f"NOTE: new kernel exceeds old kernel region by {overlap>>20}MB")
+                  print(f"      (overwrites data after old kernel + {overlap>>10}KB)")
 
-          # Find end of old kernel by scanning for FDT magic (0xD00DFEED, big-endian)
-          # In Android boot images the kernel is followed by a flat device tree
-          with open(BOOT_IMG, "rb") as f:
-              f.seek(kernel_offset)
-              # Search within first 50MB after kernel start for FDT magic
-              search_buf = f.read(min(50*1024*1024, BOOT_SIZE - kernel_offset))
-          
-          old_ksize = 0
-          fdt_magic = b'\xd0\x0d\xfe\xed'
-          idx = search_buf.find(fdt_magic)
-          if idx >= 0:
-              old_ksize = idx
-              print(f"Found FDT magic at offset {idx} from kernel start")
-          
-          if old_ksize == 0:
-              # Fallback: assume kernel takes 35MB (0x2300000)
-              old_ksize = 0x2300000
-              print(f"No FDT found, using fallback old_ksize=0x{old_ksize:x}")
-          print(f"Old kernel size: {old_ksize>>20}MB")
-
-          # ── 4. Robust kernel replacement ─────────────────────────────────────
-          # Strategy: replace kernel at same offset, find FDT end to know old kernel
-          # actual size, then only copy FDT+rest (not old kernel bytes that new
-          # kernel overwrites). New kernel that exceeds old space must overlap FDT
-          # area (no choice on GKI). Result is functionally identical.
-          
-          new_kdata = open(NEW_KERNEL, "rb").read()
-          new_ksize = len(new_kdata)
-          
-          # Find FDT magic in the kernel region (old kernel is followed by FDT)
-          with open(BOOT_IMG, "rb") as f:
-              f.seek(kernel_offset)
-              region = f.read(min(60*1024*1024, BOOT_SIZE - kernel_offset))
-          
-          fdt_magic = b'\xd0\x0d\xfe\xed'
-          fdt_idx = region.find(fdt_magic)
-          if fdt_idx > 0:
-              old_kernel_actual = fdt_idx
-              print(f"FDT found at {fdt_idx} bytes into kernel region")
-          else:
-              old_kernel_actual = min(35*1024*1024, BOOT_SIZE - kernel_offset)
-              print(f"No FDT found, assuming old kernel uses {old_kernel_actual>>20}MB")
-          
-          # Copy: header + new kernel (overwrites old kernel + partial FDT if needed)
-          with open(BOOT_IMG, "rb") as fi:
-              with open(OUT_IMG, "wb") as fo:
-                  # Copy header + everything up to old FDT start
-                  fi.seek(0)
-                  fo.write(fi.read(kernel_offset + old_kernel_actual))
-                  # Write new kernel (may exceed old_kernel_actual, overlapping FDT area)
-                  fo.write(new_kdata)
-                  # Copy rest of image after old kernel
-                  fi.seek(kernel_offset + new_ksize)
-                  while True:
-                      chunk = fi.read(2*1024*1024)
-                      if not chunk: break
-                      fo.write(chunk)
-          
-          if kernel_offset + new_ksize > BOOT_SIZE:
-              print(f"FATAL: new kernel exceeds boot image! {kernel_offset + new_ksize} > {BOOT_SIZE}")
-              sys.exit(1)
+          # ── 6. Write output (exactly same size as input) ───────────────────
+          with open(OUT_IMG, "wb") as f:
+              f.write(boot_data)
           
           out_sz = os.path.getsize(OUT_IMG)
           print(f"\nDone! new_boot_a.img = {out_sz>>20}MB ({out_sz} bytes)")
-          print(f"New kernel at 0x{kernel_offset:x}, {new_ksize>>20}MB")
+          print(f"Original boot image = {BOOT_SIZE>>20}MB")
+          if out_sz == BOOT_SIZE:
+              print("✓ Output size matches input — safe to flash")
+          else:
+              print(f"⚠ Size mismatch! Input={BOOT_SIZE}, Output={out_sz}")
           PYEOF
 
       - name: Upload new_boot_a.img as artifact
