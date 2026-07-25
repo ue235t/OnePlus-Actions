@@ -7,66 +7,52 @@ jobs:
   swap:
     runs-on: ubuntu-24.04
     steps:
+      # Step 1: Compute all needed variables
+      - name: Compute build parameters
+        id: params
+        run: |
+          FEIL="${{ vars.FEIL || 'oneplus_ace5_b' }}"
+          KV="${{ vars.KERNEL_VERSION || '6.1' }}"
+          SUS="${{ vars.SUSFS || 'On' }}"
+          RUN_ID="${{ vars.KERNEL_RUN_ID || '29919246300' }}"
+          if [ "$KV" = "6.1" ]; then
+            BASE="${FEIL}_SukiSU_Ultra_lz4_zstd_v1"
+          elif [ "$KV" = "6.6" ]; then
+            BASE="${FEIL}_SukiSU_Ultra_lz4_v1"
+          else
+            BASE="${FEIL}_SukiSU_Ultra_v1"
+          fi
+          if [ "$SUS" = "On" ]; then
+            ARTIFACT="${BASE}_SUSFS"
+          else
+            ARTIFACT="$BASE"
+          fi
+          echo "ARTIFACT_NAME=$ARTIFACT"
+          echo "RUN_ID=$RUN_ID"
+          echo "FEIL=$FEIL"
+          echo "ARTIFACT_NAME=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "FEIL=$FEIL" >> $GITHUB_OUTPUT
+
+      # Step 2: Download stock boot image
       - name: Download stock boot_a.img
         run: |
           wget -q -O boot_a.img "https://github.com/ue235t/OnePlus-Actions/releases/download/ak3-initboot/boot_a.img"
           echo "BOOT_SIZE=$(stat -c%s boot_a.img)" >> $GITHUB_OUTPUT
           ls -lh boot_a.img
 
-      - name: Compute artifact name
-        run: |
-          FEIL="${{ vars.FEIL || 'oneplus_ace5_b' }}"
-          KV="${{ vars.KERNEL_VERSION || '6.1' }}"
-          SUS="${{ vars.SUSFS || 'On' }}"
-          if [ "$KV" = "6.1" ]; then
-            BASE="${FEIL}_SukiSU_Ultra_lz4_zstd_v1"
-          elif [ "$KV" = "6.6" ]; then
-            BASE="${FEIL}_SukiSU_Ultra_lz4_v1"
-          else
-            BASE="${FEIL}_SukiSU_Ultra_v1"
-          fi
-          if [ "$SUS" = "On" ]; then
-            ARTIFACT="${BASE}_SUSFS"
-          else
-            ARTIFACT="$BASE"
-          fi
-          echo "ARTIFACT_NAME=$ARTIFACT" >> $GITHUB_OUTPUT
-          echo "RUN_ID=29919246300" >> $GITHUB_OUTPUT
-          echo "FEIL=$FEIL" >> $GITHUB_OUTPUT
-          echo "ARTIFACT_NAME=$ARTIFACT"
-
+      # Step 3: Download kernel artifact
       - name: Download kernel artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.find_image.outputs.ARTIFACT_NAME || 'oneplus_ace5_b_SukiSU_Ultra_lz4_zstd_v1_SUSFS' }}
-          run-id: ${{ steps.find_image.outputs.RUN_ID || '29919246300' }}
+          name: ${{ steps.params.outputs.ARTIFACT_NAME }}
+          run-id: ${{ steps.params.outputs.RUN_ID }}
           path: artifact
 
+      # Step 4: Find Image inside artifact
       - name: Find Image
         id: find_image
         run: |
-          FEIL="${{ steps.compute.outputs.FEIL }}"
-          KV="${{ vars.KERNEL_VERSION || '6.1' }}"
-          SUS="${{ vars.SUSFS || 'On' }}"
-          if [ "$KV" = "6.1" ]; then
-            BASE="${FEIL}_SukiSU_Ultra_lz4_zstd_v1"
-          elif [ "$KV" = "6.6" ]; then
-            BASE="${FEIL}_SukiSU_Ultra_lz4_v1"
-          else
-            BASE="${FEIL}_SukiSU_Ultra_v1"
-          fi
-          if [ "$SUS" = "On" ]; then
-            ARTIFACT="${BASE}_SUSFS"
-          else
-            ARTIFACT="$BASE"
-          fi
-          echo "ARTIFACT_NAME=$ARTIFACT"
-          echo "RUN_ID=${{ vars.KERNEL_RUN_ID || '29919246300' }}"
-          echo "FEIL=$FEIL"
-          echo "ARTIFACT_NAME=$ARTIFACT" >> $GITHUB_OUTPUT
-          echo "RUN_ID=${{ vars.KERNEL_RUN_ID || '29919246300' }}" >> $GITHUB_OUTPUT
-          echo "FEIL=$FEIL" >> $GITHUB_OUTPUT
-          # Find Image inside artifact (may be inside a zip)
           IMG="artifact/Image"
           if [ ! -f "$IMG" ]; then
             ZIP=$(find artifact/ -name "*.zip" | head -1)
@@ -76,7 +62,7 @@ jobs:
               IMG="artifact_extracted/Image"
             fi
           fi
-          echo "IMAGE_PATH=$IMG"
+          echo "Found Image: $IMG"
           echo "IMAGE_PATH=$IMG" >> $GITHUB_OUTPUT
           ls -lh "$IMG"
 
@@ -96,15 +82,13 @@ jobs:
           BOOT_IMG   = "boot_a.img"
           NEW_KERNEL = "${{ steps.find_image.outputs.IMAGE_PATH }}"
           OUT_IMG    = "new_boot_a.img"
-          BOOT_SIZE  = int(open("boot_a.img","rb").read().__len__())  # get file size
-
-          print(f"Boot image size: {BOOT_SIZE>>20}MB ({BOOT_SIZE} bytes)")
 
           # ── 1. Read the ENTIRE boot image into memory ──────────────────────
           print("Reading full boot image into memory...")
           with open(BOOT_IMG, "rb") as f:
               boot_data = bytearray(f.read())
-          print(f"Read {len(boot_data)>>20}MB")
+          BOOT_SIZE = len(boot_data)
+          print(f"Boot image size: {BOOT_SIZE>>20}MB ({BOOT_SIZE} bytes)")
 
           # ── 2. Find kernel offset via grep ──────────────────────────────────
           result = subprocess.run(
@@ -131,43 +115,38 @@ jobs:
           #   0x00: magic "ANDROID!"
           #   0x04: kernel_size (uint32, little-endian)
           #   0x08: kernel_addr (uint32)
-          #   0x0C: ramdisk_size (uint32)
-          #   0x10: ramdisk_addr (uint32)
-          #   ...
-          header = boot_data[:2048]
+          header = boot_data[:4096]
           magic = header[:8]
-          if magic != b'ANDROID!':
-              print(f"WARNING: unusual magic: {magic}")
-          
-          kernel_size_hdr = struct.unpack_from("<I", header, 0x04)[0]
-          print(f"Header kernel_size: {kernel_size_hdr>>20}MB ({kernel_size_hdr} bytes)")
+          if magic[:7] == b'ANDROID':
+              kernel_size_hdr = struct.unpack_from("<I", header, 0x04)[0]
+              kernel_addr     = struct.unpack_from("<I", header, 0x08)[0]
+              print(f"Header kernel_size: {kernel_size_hdr>>20}MB ({kernel_size_hdr} bytes)")
+              print(f"Kernel addr: 0x{kernel_addr:08x}")
           
           new_ksize = os.path.getsize(NEW_KERNEL)
           print(f"New kernel size: {new_ksize>>20}MB ({new_ksize} bytes)")
 
           # ── 4. Update header kernel_size to match new kernel ────────────────
-          struct.pack_into("<I", boot_data, 0x04, new_ksize)
-          print(f"Updated header kernel_size: {new_ksize} bytes")
+          if magic[:7] == b'ANDROID':
+              struct.pack_into("<I", boot_data, 0x04, new_ksize)
+              print(f"Updated header kernel_size: {new_ksize} bytes")
 
           # ── 5. Overwrite kernel region in-place in memory ───────────────────
-          # Read new kernel bytes
           with open(NEW_KERNEL, "rb") as f:
               new_kdata = f.read()
           
-          # Overwrite kernel region at kernel_offset
           end_offset = kernel_offset + new_ksize
           if end_offset > len(boot_data):
-              # Expand the bytearray if needed (new kernel larger than old region)
               boot_data.extend(b'\x00' * (end_offset - len(boot_data)))
           
           boot_data[kernel_offset:end_offset] = new_kdata
           print(f"Kernel written: offset=0x{kernel_offset:x}, size={new_ksize>>20}MB")
           
-          if kernel_size_hdr > 0:
+          if kernel_size_hdr and kernel_size_hdr > 0:
               overlap = max(0, end_offset - (kernel_offset + kernel_size_hdr))
               if overlap > 0:
-                  print(f"NOTE: new kernel exceeds old kernel region by {overlap>>20}MB")
-                  print(f"      (overwrites data after old kernel + {overlap>>10}KB)")
+                  print(f"NOTE: new kernel exceeds old region by {overlap>>20}MB (overwrites FDT/ramdisk area)")
+                  print(f"      This is expected on GKI devices — bootloader reads kernel from offset, not size")
 
           # ── 6. Write output (exactly same size as input) ───────────────────
           with open(OUT_IMG, "wb") as f:
@@ -175,11 +154,10 @@ jobs:
           
           out_sz = os.path.getsize(OUT_IMG)
           print(f"\nDone! new_boot_a.img = {out_sz>>20}MB ({out_sz} bytes)")
-          print(f"Original boot image = {BOOT_SIZE>>20}MB")
           if out_sz == BOOT_SIZE:
-              print("✓ Output size matches input — safe to flash")
+              print("OK: Output size matches input — safe to flash")
           else:
-              print(f"⚠ Size mismatch! Input={BOOT_SIZE}, Output={out_sz}")
+              print(f"WARN: Size mismatch! Input={BOOT_SIZE}, Output={out_sz}")
           PYEOF
 
       - name: Upload new_boot_a.img as artifact
