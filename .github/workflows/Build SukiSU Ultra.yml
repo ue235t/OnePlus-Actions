@@ -185,6 +185,12 @@ jobs:
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
 
+      - name: 🔧 Fix task_mmu.c unused label (修复无用label)
+        run: |
+          # Remove unused 'bypass:' label that causes -Werror build failure
+          cd kernel_workspace/kernel_platform/common/fs/proc
+          perl -i -pe 's/^\s*bypass:\s*\n//' task_mmu.c || true
+          
       - name: 🔧 Apply new hook & Add configuration (配置 一些内核开关)
         run: |
           cd kernel_workspace/kernel_platform
