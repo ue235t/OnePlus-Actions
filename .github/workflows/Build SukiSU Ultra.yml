@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "CPU鍒嗘敮"
+        description: "CPU分支"
         required: true
         type: choice
         options:
@@ -14,7 +14,7 @@ on:
           - 'sm7675'
         default: 'sm8650'
       FEIL:
-        description: "鎵嬫満鍨嬪彿"
+        description: "手机型号"
         required: true
         type: choice
         options:
@@ -36,7 +36,7 @@ on:
           - ' '
         default: 'oneplus_12'
       CPUD:
-        description: "澶勭悊鍣ㄤ唬鍙?
+        description: "处理器代号"
         required: true
         type: choice
         options:
@@ -45,7 +45,7 @@ on:
           - 'waipio'
         default: 'pineapple'
       ANDROID_VERSION:
-        description: "鍐呮牳瀹夊崜鐗堟湰"
+        description: "内核安卓版本"
         required: true
         type: choice
         options:
@@ -54,7 +54,7 @@ on:
           - 'android12'
         default: 'android14'
       KERNEL_VERSION:
-        description: "鍐呮牳鐗堟湰"
+        description: "内核版本"
         required: true
         type: choice
         options:
@@ -63,7 +63,7 @@ on:
           - '5.10'
         default: '6.1'
       lz4kd:
-       description: "鏄惁鍚敤lz4kd(鍏抽棴鍒欏惎鐢╨z4 + zstd)"
+       description: "是否启用lz4kd(关闭则启用lz4 + zstd)"
        required: true
        type: choice
        options:
@@ -82,7 +82,7 @@ jobs:
       CCACHE_DIR: /home/runner/.ccache  
       CCACHE_MAXSIZE: 8G
     steps:
-      - name: 馃殌 Maximize build space (鏈€澶у寲鏋勫缓绌洪棿)
+      - name: 🚀 Maximize build space (最大化构建空间)
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
@@ -92,18 +92,18 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
 
-      - name: 馃摝 Configure Git (璁剧疆涓嬭浇璐︽埛)
+      - name: 📦 Configure Git (设置下载账户)
         run: |
          git config --global user.name "bulid"
          git config --global user.email "2210077278@qq.com"
 
-      - name: 馃摝 Install dependencies (瀹夎渚濊禆)
+      - name: 📦 Install dependencies (安装依赖)
         run: |
          sudo apt update && sudo apt upgrade -y
          sudo apt install -y python3 git curl
          sudo apt install -y python3 git curl ccache
          
-      - name: 馃摜 Restore ccache (鎭㈠ ccache 缂撳瓨)
+      - name: 📥 Restore ccache (恢复 ccache 缓存)
         uses: actions/cache@v3
         with:
           path: /home/runner/.ccache
@@ -111,13 +111,13 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-
             
-      - name: 馃摜 Install repo tool (涓嬭浇repo宸ュ叿)
+      - name: 📥 Install repo tool (下载repo工具)
         run: |
          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
          chmod a+x ~/repo
          sudo mv ~/repo /usr/local/bin/repo
 
-      - name: 馃摜 Initialize repo and sync (鍏嬮殕鍐呮牳婧愮爜)
+      - name: 📥 Initialize repo and sync (克隆内核源码)
         run: |
          mkdir kernel_workspace && cd kernel_workspace
          repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
@@ -134,17 +134,17 @@ jobs:
          sed -i '$s|echo "\$res"|echo "-oki-xiaoxiaow"|' kernel_platform/msm-kernel/scripts/setlocalversion
          sed -i '$s|echo "\$res"|echo "-oki-xiaoxiaow"|' kernel_platform/external/dtc/scripts/setlocalversion
           
-      - name: 鈿欙笍 Set up SukiSU Ultra (閰嶇疆 SukiSU Ultra)
+      - name: ⚙️ Set up SukiSU Ultra (配置 SukiSU Ultra)
         run: |
           cd kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
           cd ./KernelSU
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           export KSU_VERSION=$KSU_VERSION
           sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
           
-      - name: 馃敡 Set up SUSFS (閰嶇疆 SUSFS)
+      - name: 🔧 Set up SUSFS (配置 SUSFS)
         run: |
           cd kernel_workspace
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
@@ -185,17 +185,7 @@ jobs:
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
 
-      - name: 🔧 Fix SUSFS patch warnings (修复无用变量/label/函数)
-        run: |
-          # Remove unused symbols from SUSFS patches so -Werror doesn't fail the build
-          cd kernel_workspace/kernel_platform/common
-          sed -i '/^[ \t]*bypass:[ \t]*$/d' fs/proc/task_mmu.c
-          sed -i '/unsigned[ \t]*\*[ \t]*dentry[ \t]*;/d' fs/proc/task_mmu.c
-          sed -i '/show_vma_header_prefix_fake/d' fs/proc/task_mmu.c
-          sed -i 's/export WERROR_FLAGS=.*/export WERROR_FLAGS=" -w"/' ./common/build.config.gki
-          echo "WERROR_FLAGS patched to '-w'"
-          grep -i werror ./common/build.config.gki || echo "No WERROR_FLAGS found"
-      - name: 馃敡 Apply new hook & Add configuration (閰嶇疆 涓€浜涘唴鏍稿紑鍏?
+      - name: 🔧 Apply new hook & Add configuration (配置 一些内核开关)
         run: |
           cd kernel_workspace/kernel_platform
           # Add KSU configuration settings
@@ -235,23 +225,21 @@ jobs:
           fi
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
-          # Disable -Werror to prevent build failures from SUSFS patch warnings
-          sed -i '/WERROR_FLAGS/a WERROR_FLAGS=' ./common/build.config.gki
           
-      - name: 馃敤 Build Kernel (鏋勫缓鍐呮牳)
+      - name: 🔨 Build Kernel (构建内核)
         run: |
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
-            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=clang RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out CONFIG_LTO_CLANG=y CONFIG_LTO_CLANG_THIN=y CONFIG_LTO_CLANG_FULL=n CONFIG_LTO_NONE=n gki_defconfig all
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=clang RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld  HOSTLD=ld.lld O=out KCFLAGS+=-O2 CONFIG_LTO_CLANG=y CONFIG_LTO_CLANG_THIN=y CONFIG_LTO_CLANG_FULL=n CONFIG_LTO_NONE=n gki_defconfig all
           else
             cd kernel_workspace
             LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} gki
           fi
           
-      - name: 馃摝 Package kernel to AnyKernel3 (鎵撳寘鍐呮牳鍒?AnyKernel3)
+      - name: 📦 Package kernel to AnyKernel3 (打包内核到 AnyKernel3)
         run: |
           git clone https://github.com/Xiaomichael/AnyKernel3 --depth=1
           rm -rf ./AnyKernel3/.git
@@ -285,15 +273,15 @@ jobs:
             if [ "$(realpath "$image_path")" != "$(realpath "$dir1"Image)" ]; then
               cp "$image_path" "$dir1"
             else
-              echo "婧愭枃浠朵笌鐩爣鐩稿悓锛岃烦杩囧鍒?
+              echo "源文件与目标相同，跳过复制"
             fi
             cp "$dir1"Image ./AnyKernel3/Image
           else
-            echo "鏈壘鍒?Image 鏂囦欢锛屾瀯寤哄彲鑳藉け璐?
+            echo "未找到 Image 文件，构建可能失败"
             exit 1
           fi
          
-      - name: 馃洜锔?KPM Patching Image Files (KPM 淇ˉ Image 鏂囦欢)
+      - name: 🛠️ KPM Patching Image Files (KPM 修补 Image 文件)
         run: |
           cd kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist
           curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.11.4/patch_linux
@@ -304,27 +292,27 @@ jobs:
           cp Image $GITHUB_WORKSPACE/AnyKernel3/Image
           cp Image $GITHUB_WORKSPACE/kernel_workspace/kernel
          
-      - name: 馃摛 Upload AnyKernel3 with lz4kd (涓婁紶 AnyKernel3)
+      - name: 📤 Upload AnyKernel3 with lz4kd (上传 AnyKernel3)
         if: ${{ github.event.inputs.lz4kd == 'Open' }}
         uses: actions/upload-artifact@v4
         with:
          name: AnyKernel3_SukiSU_Ultra_lz4kd_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: ./AnyKernel3/*
          
-      - name: 馃摛 Upload AnyKernel3 (涓婁紶 AnyKernel3)
+      - name: 📤 Upload AnyKernel3 (上传 AnyKernel3)
         if: ${{ github.event.inputs.lz4kd != 'Open' }}
         uses: actions/upload-artifact@v4
         with:
          name: AnyKernel3_SukiSU_Ultra_lz4_zstd_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: ./AnyKernel3/*
          
-      - name: 馃摑 Find zram.ko & crypto_zstdn.ko (鏌ユ壘 zram.ko & crypto_zstdn.ko)
+      - name: 📝 Find zram.ko & crypto_zstdn.ko (查找 zram.ko & crypto_zstdn.ko)
         if: ${{ github.event.inputs.lz4kd == 'Open' }}
         run: |
           find -name zram.ko
           find -name crypto_zstdn.ko
           
-      - name: 馃摛 Upload zram.ko (涓婁紶 zram.ko)
+      - name: 📤 Upload zram.ko (上传 zram.ko)
         if: ${{ github.event.inputs.lz4kd == 'Open' }}
         uses: actions/upload-artifact@v4
         with:
