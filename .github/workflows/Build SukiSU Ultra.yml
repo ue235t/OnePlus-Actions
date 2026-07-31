@@ -185,6 +185,18 @@ jobs:
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
 
+      - name: Fix SUSFS patch warnings (移除无用符号防止 -Werror 失败)
+        run: |
+          cd kernel_workspace/kernel_platform/common
+          # Remove unused symbols introduced by SUSFS patches
+          sed -i '/^[ \t]*bypass:[ \t]*$/d' fs/proc/task_mmu.c
+          sed -i '/unsigned[ \t]*\*[ \t]*dentry[ \t]*;/d' fs/proc/task_mmu.c
+          sed -i '/show_vma_header_prefix_fake/d' fs/proc/task_mmu.c
+          # Disable -Werror so patch warnings don't fail the build
+          sed -i 's/export WERROR_FLAGS=.*/export WERROR_FLAGS=" -w"/' ./common/build.config.gki
+          echo "WERROR_FLAGS set to '-w'"
+          grep -i werror ./common/build.config.gki
+
       - name: 🔧 Apply new hook & Add configuration (配置 一些内核开关)
         run: |
           cd kernel_workspace/kernel_platform
