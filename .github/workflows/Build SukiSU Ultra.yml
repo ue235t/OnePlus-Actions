@@ -1,37 +1,12 @@
-#!/bin/bash
-set -e
-
-KERNEL_NAME="Ace5-SukiSU-SUSFS"
-
-# 1. 创建目录
 mkdir -p ~/ace5-build && cd ~/ace5-build
-
-# 2. 拉源码
 git clone https://github.com/AviumUI-Devices/kernel_oneplus_sm8650.git
+cd kernel_oneplus_sm8650 && git checkout lineage-22.2
+cd .. && git clone --depth 3 https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android14-6.1
 cd kernel_oneplus_sm8650
-git checkout lineage-22.2
-
-# 3. SUSFS 补丁
-cd ..
-git clone --depth 3 https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android14-6.1
-
-# 4. 集成 SukiSU Ultra
-cd kernel_oneplus_sm8650
-curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -
-
-# 5. 集成 SUSFS
-cp ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch KernelSU/
-cp ../susfs4ksu/kernel_patches/*add_susfs*.patch . 2>/dev/null || \
-  cp ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-6.1.patch .
-
+curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
 cp ../susfs4ksu/kernel_patches/fs/* fs/
 cp ../susfs4ksu/kernel_patches/include/linux/* include/linux/
-
-# 打补丁
-cd KernelSU && patch -p1 < 10_enable_susfs_for_ksu.patch; cd ..
-patch -p1 < *add_susfs*.patch 2>/dev/null || patch -p1 < 50_add_susfs_in_kernel-6.1.patch
-
-# 6. defconfig
+patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-6.1.patch
 cat >> arch/arm64/configs/gki_defconfig <<'EOF'
 CONFIG_KSU=y
 CONFIG_KSU_SUSFS=y
@@ -40,34 +15,45 @@ CONFIG_KSU_SUSFS_SUS_MOUNT=y
 CONFIG_KSU_SUSFS_SUS_KSTAT=y
 CONFIG_KSU_SUSFS_SPOOF_UNAME=y
 CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
+CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
+CONFIG_KSU_SUSFS_SUS_SELINUX=y
+CONFIG_KSU_SUSFS_SUS_FSTYPE=y
+CONFIG_KSU_SUSFS_SUS_SU=y
+CONFIG_KSU_SUSFS_SUS_LOG=y
+CONFIG_KSU_SUSFS_SUS_MAPS=y
+CONFIG_KSU_SUSFS_SUS_MEMFD=y
+CONFIG_KSU_SUSFS_SUS_NETLINK=y
+CONFIG_KSU_SUSFS_SUS_PROCFS=y
+CONFIG_KSU_SUSFS_SUS_SIGNAL=y
+CONFIG_KSU_SUSFS_SUS_TASK=y
+CONFIG_KSU_SUSFS_SUS_THREAD=y
+CONFIG_KSU_SUSFS_SUS_UNSHARE=y
+CONFIG_KSU_SUSFS_SUS_VMA=y
+CONFIG_KSU_SUSFS_SUS_WORKQUEUE=y
+CONFIG_KSU_SUSFS_SUS_XATTR=y
+CONFIG_KSU_SUSFS_SUS_ZONE=y
 EOF
-
-# 7. 编译
-cd ~/ace5-build
-git clone https://github.com/SPLOACK/oppo_oplus_realme_sm8650.git build-script
-cd build-script
-./Build_sm8650.sh
-
-# 8. 打包 AK3
-cd ~/ace5-build
-git clone https://github.com/osm0sis/AnyKernel3.git AK3
-cp kernel_oneplus_sm8650/out/Image.gz-dtb AK3/
-
-cat > AK3/anykernel.sh <<'EOF'
-kernel.string=Ace5-SukiSU-SUSFS
+cd .. && git clone https://github.com/SPLOACK/oppo_oplus_realme_sm8650.git build-script
+mv kernel_oneplus_sm8650 build-script/android_kernel_oneplus_sm8650
+cd build-script && chmod +x Build_sm8650.sh && ./Build_sm8650.sh
+cd .. && git clone https://github.com/osm0sis/AnyKernel3.git AK3
+cp build-script/out/Image.gz-dtb AK3/ 2>/dev/null || cp build-script/dist/Image.gz-dtb AK3/
+cd AK3 && echo 'kernel.string=Ace5-PKG110-SukiSU-SUSFS-6.1.161
 do.devicecheck=1
 device.name1=PKG110
 do.modules=0
 do.systemless=1
 do.cleanup=1
+do.cleanuponabort=0
 is_slot_device=1
 slot_select=auto
 block=/dev/block/by-name/boot
 ramdisk_compression=auto
 patch_vbmeta_flag=auto
 . tools/ak3-core.sh
-EOF
-
-cd AK3 && zip -r9 ../AK3_Ace5_SukiSU.zip * -x .git README.md
-
-echo "编译完成: ~/ace5-build/AK3_Ace5_SukiSU.zip"
+boot_install() { dump_boot; write_boot; }' > anykernel.sh && zip -r9 ../AK3_Ace5_SukiSU_SUSFS.zip * -x .git README.md
+cd .. && unzip AK3_Ace5_SukiSU_SUSFS.zip boot.img && adb reboot bootloader && fastboot boot boot.img
