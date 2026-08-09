@@ -193,9 +193,9 @@ jobs:
           sed -i '/unsigned[ \t]*\*[ \t]*dentry[ \t]*;/d' fs/proc/task_mmu.c
           sed -i '/show_vma_header_prefix_fake/d' fs/proc/task_mmu.c
           # Disable -Werror so patch warnings don't fail the build
-          sed -i 's/export WERROR_FLAGS=.*/export WERROR_FLAGS=" -w"/' ./common/build.config.gki
+          sed -i 's/export WERROR_FLAGS=.*/export WERROR_FLAGS=" -w"/' ./build.config.gki
           echo "WERROR_FLAGS set to '-w'"
-          grep -i werror ./common/build.config.gki
+          grep -i werror ./build.config.gki || echo 'WERROR_FLAGS line not present'
 
       - name: 🔧 Apply new hook & Add configuration (配置 一些内核开关)
         run: |
